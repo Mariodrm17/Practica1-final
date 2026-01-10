@@ -6,6 +6,12 @@ const http = require("http");
 const path = require("path");
 const cors = require("cors");
 
+// ================== CONFIGURACIÓN DE GRAPHQL ==================
+const { ApolloServer } = require('@apollo/server');
+const { expressMiddleware } = require('@apollo/server/express4');
+const typeDefs = require('./graphql/schema');
+const resolvers = require('./graphql/resolvers');
+
 // ================== IMPORTAR MODELOS Y RUTAS ==================
 const Product = require("./models/Product");
 const User = require("./models/User");
@@ -31,6 +37,25 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
+
+// ================== CONFIGURACIÓN GRAPHQL ==================
+async function startApolloServer() {
+  const apollo = new ApolloServer({
+    typeDefs,
+    resolvers,
+  });
+
+  await apollo.start();
+
+  // Ruta para GraphQL
+  app.use('/graphql', cors(), express.json(), expressMiddleware(apollo));
+  
+  console.log('🚀 GraphQL listo en http://localhost:3000/graphql');
+}
+
+startApolloServer();
+
+// ================== FIN CONFIGURACIÓN GRAPHQL ==================
 
 // Conexión a MongoDB con mejor manejo de errores
 console.log('🔗 Intentando conectar a MongoDB Atlas...');
