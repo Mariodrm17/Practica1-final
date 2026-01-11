@@ -17,6 +17,9 @@ const cartRoutes = require("./routes/cartRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 
+// GRAPHQL RESOLVERS (SIN APOLLO)
+const resolvers = require('./graphql/resolvers');
+
 const app = express();
 const server = http.createServer(app);
 
@@ -28,64 +31,109 @@ const io = socketIo(server, {
   }
 });
 
-// ================== MIDDLEWARE BÁSICO (ANTES DE GRAPHQL) ==================
+// ================== MIDDLEWARE ==================
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
-// ================== CONFIGURACIÓN GRAPHQL ==================
-const { ApolloServer } = require('@apollo/server');
-const { expressMiddleware } = require('@apollo/server/express4');
-const typeDefs = require('./graphql/schema');
-const resolvers = require('./graphql/resolvers');
+// ================== GRAPHQL ENDPOINT BÁSICO (SIN APOLLO) ==================
 
-let apolloServer;
-let apolloStarted = false;
-
-async function initializeApollo() {
+app.post('/graphql', async (req, res) => {
   try {
-    console.log('🔄 Iniciando Apollo Server...');
+    const { query } = req.body;
     
-    apolloServer = new ApolloServer({
-      typeDefs,
-      resolvers,
-      introspection: true,
-      formatError: (error) => {
-        console.error('GraphQL Error:', error.message);
-        return {
-          message: error.message,
-          locations: error.locations,
-          path: error.path,
-        };
-      },
+    console.log('📡 GraphQL Query recibida:', query.substring(0, 100) + '...');
+    
+    // Query: getProducts
+    if (query.includes('getProducts') && !query.includes('getProductsByLeague')) {
+      const products = await resolvers.Query.getProducts();
+      return res.json({ data: { getProducts: products } });
+    }
+    
+    // Query: getProductsByLeague
+    if (query.includes('getProductsByLeague')) {
+      const leagueMatch = query.match(/league:\s*"(\w+)"/);
+      if (leagueMatch) {
+        const products = await resolvers.Query.getProductsByLeague(null, { league: leagueMatch[1] });
+        return res.json({ data: { getProductsByLeague: products } });
+      }
+    }
+    
+    // Query: getProduct (por ID)
+    if (query.includes('getProduct(') || query.includes('getProduct (')) {
+      const idMatch = query.match(/id:\s*"([^"]+)"/);
+      if (idMatch) {
+        const product = await resolvers.Query.getProduct(null, { id: idMatch[1] });
+        return res.json({ data: { getProduct: product } });
+      }
+    }
+    
+    // Query: getOrders
+    if (query.includes('getOrders')) {
+      const statusMatch = query.match(/status:\s*"(\w+)"/);
+      const status = statusMatch ? statusMatch[1] : null;
+      const orders = await resolvers.Query.getOrders(null, { status });
+      return res.json({ data: { getOrders: orders } });
+    }
+    
+    // Query: getOrder (por ID)
+    if (query.includes('getOrder(') || query.includes('getOrder (')) {
+      const idMatch = query.match(/id:\s*"([^"]+)"/);
+      if (idMatch) {
+        const order = await resolvers.Query.getOrder(null, { id: idMatch[1] });
+        return res.json({ data: { getOrder: order } });
+      }
+    }
+    
+    // Query: getMyOrders
+    if (query.includes('getMyOrders')) {
+      const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
+      if (userIdMatch) {
+        const orders = await resolvers.Query.getMyOrders(null, { userId: userIdMatch[1] });
+        return res.json({ data: { getMyOrders: orders } });
+      }
+    }
+    
+    // Query: getCart
+    if (query.includes('getCart')) {
+      const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
+      if (userIdMatch) {
+        const cart = await resolvers.Query.getCart(null, { userId: userIdMatch[1] });
+        return res.json({ data: { getCart: cart } });
+      }
+    }
+    
+    // Query: getOrderStats
+    if (query.includes('getOrderStats')) {
+      const stats = await resolvers.Query.getOrderStats();
+      return res.json({ data: { getOrderStats: stats } });
+    }
+    
+    // Query: hello
+    if (query.includes('hello')) {
+      const message = await resolvers.Query.hello();
+      return res.json({ data: { hello: message } });
+    }
+    
+    // Si llegamos aquí, la query no está implementada
+    res.json({
+      data: null,
+      errors: [{
+        message: 'Query no implementada en modo básico. Queries disponibles: getProducts, getProductsByLeague, getOrders, getCart, getOrderStats, hello'
+      }]
     });
-
-    await apolloServer.start();
-    console.log('✅ Apollo Server iniciado correctamente');
-    
-    // Aplicar middleware de Apollo
-    app.use(
-      '/graphql',
-      cors(),
-      express.json(),
-      expressMiddleware(apolloServer, {
-        context: async ({ req }) => ({
-          token: req.headers.authorization?.replace('Bearer ', ''),
-        }),
-      })
-    );
-    
-    apolloStarted = true;
-    console.log('🚀 GraphQL disponible en: http://localhost:3000/graphql');
     
   } catch (error) {
-    console.error('❌ ERROR iniciando Apollo Server:');
-    console.error('Mensaje:', error.message);
-    console.error('Stack:', error.stack);
-    apolloStarted = false;
+    console.error('❌ Error en GraphQL:', error);
+    res.json({
+      data: null,
+      errors: [{
+        message: error.message
+      }]
+    });
   }
-}
+});
 
 // ================== CONEXIÓN A MONGODB ==================
 console.log('🔗 Intentando conectar a MongoDB Atlas...');
@@ -100,11 +148,9 @@ mongoose.connect(process.env.MONGODB_URI, {
   console.log('✅ Conectado a MongoDB Atlas correctamente');
   console.log('📊 Base de datos:', mongoose.connection.db.databaseName);
   
-  // PRIMERO: Iniciar Apollo
-  await initializeApollo();
-  
-  // SEGUNDO: Inicializar datos
   await initializeDefaultData();
+  
+  console.log('🚀 GraphQL BÁSICO disponible en: http://localhost:3000/graphql');
 })
 .catch(err => {
   console.error('❌ Error crítico conectando a MongoDB:', err);
@@ -119,7 +165,7 @@ mongoose.connection.on('disconnected', () => {
   console.log('⚠️  MongoDB desconectado');
 });
 
-// ================== RUTAS REST (DESPUÉS DE APOLLO) ==================
+// ================== RUTAS REST ==================
 
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
@@ -144,8 +190,9 @@ app.get("/api/health", async (req, res) => {
         users: userCount
       },
       graphql: {
-        status: apolloStarted ? "✅ ACTIVO" : "❌ NO INICIADO",
-        endpoint: apolloStarted ? "http://localhost:3000/graphql" : "N/A"
+        status: "✅ MODO BÁSICO ACTIVO",
+        endpoint: "http://localhost:3000/graphql",
+        queries: ["getProducts", "getProductsByLeague", "getOrders", "getCart", "getOrderStats", "hello"]
       },
       environment: process.env.NODE_ENV || "development"
     });
@@ -306,8 +353,7 @@ io.on("connection", (socket) => {
     });
 });
 
-// ================== MANEJADOR 404 - AL FINAL ==================
-// IMPORTANTE: Este debe ir AL FINAL de todas las rutas
+// ================== MANEJADOR 404 ==================
 app.use("*", (req, res) => {
   res.status(404).json({
     error: "Ruta no encontrada",
@@ -324,6 +370,7 @@ app.use((error, req, res, next) => {
     message: process.env.NODE_ENV === "development" ? error.message : "Contacta al administrador"
   });
 });
+
 // ================== INICIALIZACIÓN DE DATOS ==================
 
 async function initializeDefaultData() {
@@ -458,7 +505,7 @@ server.listen(PORT, () => {
   console.log(`🏀 Tienda de Baloncesto NBA/ACB`);
   console.log(`🔗 Health: http://localhost:${PORT}/api/health`);
   console.log(`🔗 Frontend: http://localhost:${PORT}`);
-  console.log(`⚠️  GraphQL: modo básico (actualiza Apollo para completo)`);
+  console.log(`🔗 GraphQL: http://localhost:${PORT}/graphql (MODO BÁSICO)`);
   console.log(`🎉 ==========================================\n`);
 });
 
