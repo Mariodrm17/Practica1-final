@@ -28,77 +28,66 @@ const io = socketIo(server, {
   }
 });
 
-// Middleware
+// ================== MIDDLEWARE BÁSICO (ANTES DE GRAPHQL) ==================
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // ================== CONFIGURACIÓN GRAPHQL ==================
-// COMENTADO TEMPORALMENTE - DESCOMENTAR CUANDO FUNCIONE APOLLO
-/*
 const { ApolloServer } = require('@apollo/server');
 const { expressMiddleware } = require('@apollo/server/express4');
 const typeDefs = require('./graphql/schema');
 const resolvers = require('./graphql/resolvers');
 
-async function startApolloServer() {
-  const apollo = new ApolloServer({
-    typeDefs,
-    resolvers,
-  });
+let apolloServer;
+let apolloStarted = false;
 
-  await apollo.start();
-  app.use('/graphql', cors(), express.json(), expressMiddleware(apollo));
-  console.log('🚀 GraphQL listo en http://localhost:3000/graphql');
-}
-
-startApolloServer();
-*/
-
-// TEMPORAL: Endpoint GraphQL básico sin Apollo
-app.post('/graphql', express.json(), async (req, res) => {
+async function initializeApollo() {
   try {
-    const { query, variables } = req.body;
+    console.log('🔄 Iniciando Apollo Server...');
     
-    // Query simple de ejemplo
-    if (query.includes('getProducts')) {
-      const products = await Product.find({ isActive: true }).limit(10);
-      return res.json({
-        data: {
-          getProducts: products
-        }
-      });
-    }
-    
-    if (query.includes('getOrders')) {
-      const Order = require('./models/Order');
-      const orders = await Order.find().populate('products.product');
-      return res.json({
-        data: {
-          getOrders: orders
-        }
-      });
-    }
-    
-    res.json({
-      data: null,
-      errors: [{ message: 'Query no implementada sin Apollo Server' }]
+    apolloServer = new ApolloServer({
+      typeDefs,
+      resolvers,
+      introspection: true,
+      formatError: (error) => {
+        console.error('GraphQL Error:', error.message);
+        return {
+          message: error.message,
+          locations: error.locations,
+          path: error.path,
+        };
+      },
     });
+
+    await apolloServer.start();
+    console.log('✅ Apollo Server iniciado correctamente');
+    
+    // Aplicar middleware de Apollo
+    app.use(
+      '/graphql',
+      cors(),
+      express.json(),
+      expressMiddleware(apolloServer, {
+        context: async ({ req }) => ({
+          token: req.headers.authorization?.replace('Bearer ', ''),
+        }),
+      })
+    );
+    
+    apolloStarted = true;
+    console.log('🚀 GraphQL disponible en: http://localhost:3000/graphql');
     
   } catch (error) {
-    res.status(500).json({
-      errors: [{ message: error.message }]
-    });
+    console.error('❌ ERROR iniciando Apollo Server:');
+    console.error('Mensaje:', error.message);
+    console.error('Stack:', error.stack);
+    apolloStarted = false;
   }
-});
+}
 
-console.log('⚠️  GraphQL en modo básico (sin Apollo Server)');
-console.log('📝 Para activar Apollo: ejecuta "npm install @apollo/server@4.10.0"');
-
-// ================== FIN CONFIGURACIÓN GRAPHQL ==================
-
-// Conexión a MongoDB
+// ================== CONEXIÓN A MONGODB ==================
 console.log('🔗 Intentando conectar a MongoDB Atlas...');
 
 mongoose.connect(process.env.MONGODB_URI, {
@@ -110,6 +99,11 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(async () => {
   console.log('✅ Conectado a MongoDB Atlas correctamente');
   console.log('📊 Base de datos:', mongoose.connection.db.databaseName);
+  
+  // PRIMERO: Iniciar Apollo
+  await initializeApollo();
+  
+  // SEGUNDO: Inicializar datos
   await initializeDefaultData();
 })
 .catch(err => {
@@ -125,132 +119,7 @@ mongoose.connection.on('disconnected', () => {
   console.log('⚠️  MongoDB desconectado');
 });
 
-// ================== INICIALIZACIÓN DE DATOS ==================
-
-async function initializeDefaultData() {
-  try {
-    console.log('🏀 Verificando datos iniciales...');
-    
-    const adminCount = await User.countDocuments({ role: 'admin' });
-    let adminUser;
-
-    if (adminCount === 0) {
-      console.log('👑 Creando usuario administrador...');
-      adminUser = await createDefaultAdmin();
-    } else {
-      adminUser = await User.findOne({ role: 'admin' });
-      console.log('✅ Usuario admin ya existe:', adminUser.email);
-    }
-    
-    const productCount = await Product.countDocuments();
-    console.log(`📦 Productos en BD: ${productCount}`);
-    
-    if (productCount === 0) {
-      console.log('🔄 Creando productos de baloncesto...');
-      await createDefaultProducts(adminUser);
-    }
-    
-    console.log('🎉 Inicialización completada correctamente');
-    
-  } catch (error) {
-    console.error('❌ Error en inicialización:', error);
-  }
-}
-
-async function createDefaultAdmin() {
-  try {
-    const bcrypt = require('bcryptjs');
-    
-    const existingAdmin = await User.findOne({ email: 'admin@baloncesto.com' });
-    if (existingAdmin) {
-      console.log('✅ Usuario admin ya existe');
-      return existingAdmin;
-    }
-    
-    const adminUser = new User({
-      username: 'admin',
-      email: 'admin@baloncesto.com',
-      password: await bcrypt.hash('admin123', 12),
-      role: 'admin'
-    });
-    
-    await adminUser.save();
-    console.log('✅ Usuario admin creado: admin@baloncesto.com / admin123');
-    return adminUser;
-    
-  } catch (error) {
-    console.error('❌ Error creando admin:', error);
-    throw error;
-  }
-}
-
-async function createDefaultProducts(adminUser) {
-  try {
-    const createdById = adminUser ? adminUser._id : new mongoose.Types.ObjectId();
-
-    const defaultProducts = [
-      {
-        name: "Balón Oficial NBA Spalding",
-        description: "Balón de baloncesto oficial de la NBA, tamaño 7, material de cuero sintético premium.",
-        price: 89.99,
-        category: "Balones",
-        image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400",
-        stock: 25,
-        league: "NBA",
-        createdBy: createdById
-      },
-      {
-        name: "Camiseta Lakers LeBron James",
-        description: "Camiseta oficial de Los Angeles Lakers, edición legendaria de LeBron James.",
-        price: 119.99,
-        category: "Camisetas",
-        image: "https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=400",
-        stock: 15,
-        league: "NBA",
-        createdBy: createdById
-      },
-      {
-        name: "Zapatillas Jordan XXXVII",
-        description: "Zapatillas de baloncesto Air Jordan XXXVII, tecnología Zoom Air, edición limitada.",
-        price: 199.99,
-        category: "Calzado",
-        image: "https://images.unsplash.com/photo-1605348532760-6753d2c43329?w=400",
-        stock: 8,
-        league: "NBA",
-        createdBy: createdById
-      },
-      {
-        name: "Balón Oficial ACB Molten",
-        description: "Balón oficial de la Liga ACB, tamaño 7, homologado FIBA.",
-        price: 69.99,
-        category: "Balones",
-        image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400",
-        stock: 30,
-        league: "ACB",
-        createdBy: createdById
-      },
-      {
-        name: "Camiseta Real Madrid 2024",
-        description: "Camiseta oficial del Real Madrid de baloncesto, temporada 2023-2024.",
-        price: 89.99,
-        category: "Camisetas",
-        image: "https://images.unsplash.com/photo-1614624532983-1fe212c7d6e5?w=400",
-        stock: 20,
-        league: "ACB",
-        createdBy: createdById
-      }
-    ];
-
-    await Product.insertMany(defaultProducts);
-    console.log(`✅ ${defaultProducts.length} productos creados exitosamente`);
-    
-  } catch (error) {
-    console.error('❌ Error creando productos:', error);
-    throw error;
-  }
-}
-
-// ================== RUTAS ==================
+// ================== RUTAS REST (DESPUÉS DE APOLLO) ==================
 
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
@@ -274,7 +143,10 @@ app.get("/api/health", async (req, res) => {
         products: productCount,
         users: userCount
       },
-      graphql: "modo básico (sin Apollo)",
+      graphql: {
+        status: apolloStarted ? "✅ ACTIVO" : "❌ NO INICIADO",
+        endpoint: apolloStarted ? "http://localhost:3000/graphql" : "N/A"
+      },
       environment: process.env.NODE_ENV || "development"
     });
   } catch (error) {
@@ -434,7 +306,8 @@ io.on("connection", (socket) => {
     });
 });
 
-// Manejo de errores
+// ================== MANEJADOR 404 - AL FINAL ==================
+// IMPORTANTE: Este debe ir AL FINAL de todas las rutas
 app.use("*", (req, res) => {
   res.status(404).json({
     error: "Ruta no encontrada",
@@ -443,6 +316,7 @@ app.use("*", (req, res) => {
   });
 });
 
+// Manejo de errores globales
 app.use((error, req, res, next) => {
   console.error("🔥 Error global:", error);
   res.status(500).json({
@@ -450,6 +324,130 @@ app.use((error, req, res, next) => {
     message: process.env.NODE_ENV === "development" ? error.message : "Contacta al administrador"
   });
 });
+// ================== INICIALIZACIÓN DE DATOS ==================
+
+async function initializeDefaultData() {
+  try {
+    console.log('🏀 Verificando datos iniciales...');
+    
+    const adminCount = await User.countDocuments({ role: 'admin' });
+    let adminUser;
+
+    if (adminCount === 0) {
+      console.log('👑 Creando usuario administrador...');
+      adminUser = await createDefaultAdmin();
+    } else {
+      adminUser = await User.findOne({ role: 'admin' });
+      console.log('✅ Usuario admin ya existe:', adminUser.email);
+    }
+    
+    const productCount = await Product.countDocuments();
+    console.log(`📦 Productos en BD: ${productCount}`);
+    
+    if (productCount === 0) {
+      console.log('🔄 Creando productos de baloncesto...');
+      await createDefaultProducts(adminUser);
+    }
+    
+    console.log('🎉 Inicialización completada correctamente');
+    
+  } catch (error) {
+    console.error('❌ Error en inicialización:', error);
+  }
+}
+
+async function createDefaultAdmin() {
+  try {
+    const bcrypt = require('bcryptjs');
+    
+    const existingAdmin = await User.findOne({ email: 'admin@baloncesto.com' });
+    if (existingAdmin) {
+      console.log('✅ Usuario admin ya existe');
+      return existingAdmin;
+    }
+    
+    const adminUser = new User({
+      username: 'admin',
+      email: 'admin@baloncesto.com',
+      password: await bcrypt.hash('admin123', 12),
+      role: 'admin'
+    });
+    
+    await adminUser.save();
+    console.log('✅ Usuario admin creado: admin@baloncesto.com / admin123');
+    return adminUser;
+    
+  } catch (error) {
+    console.error('❌ Error creando admin:', error);
+    throw error;
+  }
+}
+
+async function createDefaultProducts(adminUser) {
+  try {
+    const createdById = adminUser ? adminUser._id : new mongoose.Types.ObjectId();
+
+    const defaultProducts = [
+      {
+        name: "Balón Oficial NBA Spalding",
+        description: "Balón de baloncesto oficial de la NBA, tamaño 7, material de cuero sintético premium.",
+        price: 89.99,
+        category: "Balones",
+        image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400",
+        stock: 25,
+        league: "NBA",
+        createdBy: createdById
+      },
+      {
+        name: "Camiseta Lakers LeBron James",
+        description: "Camiseta oficial de Los Angeles Lakers, edición legendaria de LeBron James.",
+        price: 119.99,
+        category: "Camisetas",
+        image: "https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=400",
+        stock: 15,
+        league: "NBA",
+        createdBy: createdById
+      },
+      {
+        name: "Zapatillas Jordan XXXVII",
+        description: "Zapatillas de baloncesto Air Jordan XXXVII, tecnología Zoom Air, edición limitada.",
+        price: 199.99,
+        category: "Calzado",
+        image: "https://images.unsplash.com/photo-1605348532760-6753d2c43329?w=400",
+        stock: 8,
+        league: "NBA",
+        createdBy: createdById
+      },
+      {
+        name: "Balón Oficial ACB Molten",
+        description: "Balón oficial de la Liga ACB, tamaño 7, homologado FIBA.",
+        price: 69.99,
+        category: "Balones",
+        image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400",
+        stock: 30,
+        league: "ACB",
+        createdBy: createdById
+      },
+      {
+        name: "Camiseta Real Madrid 2024",
+        description: "Camiseta oficial del Real Madrid de baloncesto, temporada 2023-2024.",
+        price: 89.99,
+        category: "Camisetas",
+        image: "https://images.unsplash.com/photo-1614624532983-1fe212c7d6e5?w=400",
+        stock: 20,
+        league: "ACB",
+        createdBy: createdById
+      }
+    ];
+
+    await Product.insertMany(defaultProducts);
+    console.log(`✅ ${defaultProducts.length} productos creados exitosamente`);
+    
+  } catch (error) {
+    console.error('❌ Error creando productos:', error);
+    throw error;
+  }
+}
 
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
