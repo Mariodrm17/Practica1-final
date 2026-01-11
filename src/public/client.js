@@ -1,3 +1,4 @@
+// client.js - VERSIÓN CON GRAPHQL INTEGRADO
 class BasketballStore {
     constructor() {
         this.token = localStorage.getItem('token');
@@ -5,6 +6,7 @@ class BasketballStore {
         this.socket = null;
         this.products = [];
         this.API_BASE = window.location.origin;
+        this.GRAPHQL_ENDPOINT = `${this.API_BASE}/graphql`;
         this.init();
     }
 
@@ -13,6 +15,34 @@ class BasketballStore {
         this.setupEventListeners();
         this.setupNavigation();
     }
+
+    // ==================== MÉTODOS GRAPHQL ====================
+    
+    async graphqlQuery(query, variables = {}) {
+        try {
+            const response = await fetch(this.GRAPHQL_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(this.token && { 'Authorization': `Bearer ${this.token}` })
+                },
+                body: JSON.stringify({ query, variables })
+            });
+
+            const result = await response.json();
+
+            if (result.errors) {
+                throw new Error(result.errors[0].message);
+            }
+
+            return result.data;
+        } catch (error) {
+            console.error('GraphQL Error:', error);
+            throw error;
+        }
+    }
+
+    // ==================== AUTENTICACIÓN (REST) ====================
 
     async checkAuth() {
         if (this.token) {
@@ -148,49 +178,49 @@ class BasketballStore {
     }
 
     async register() {
-    const form = document.getElementById('register-form');
-    const submitBtn = form.querySelector('button');
-    
-    // Obtener valores directamente del formulario
-    const username = document.getElementById('register-username').value;
-    const email = document.getElementById('register-email').value;
-    const password = document.getElementById('register-password').value;
-    const role = document.getElementById('role').value;
-    
-    submitBtn.textContent = 'Registrando...';
-    submitBtn.disabled = true;
+        const form = document.getElementById('register-form');
+        const submitBtn = form.querySelector('button');
+        
+        // Obtener valores directamente del formulario
+        const username = document.getElementById('register-username').value;
+        const email = document.getElementById('register-email').value;
+        const password = document.getElementById('register-password').value;
+        const role = document.getElementById('role').value;
+        
+        submitBtn.textContent = 'Registrando...';
+        submitBtn.disabled = true;
 
-    try {
-        const response = await fetch(`${this.API_BASE}/api/auth/register`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                username: username,
-                email: email,
-                password: password,
-                role: role
-            })
-        });
+        try {
+            const response = await fetch(`${this.API_BASE}/api/auth/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    username: username,
+                    email: email,
+                    password: password,
+                    role: role
+                })
+            });
 
-        const data = await response.json();
+            const data = await response.json();
 
-        if (response.ok) {
-            this.showNotification('¡Registro exitoso! Por favor inicia sesión.', 'success');
-            showLogin();
-            form.reset();
-        } else {
-            this.showNotification(data.message, 'error');
+            if (response.ok) {
+                this.showNotification('¡Registro exitoso! Por favor inicia sesión.', 'success');
+                showLogin();
+                form.reset();
+            } else {
+                this.showNotification(data.message, 'error');
+            }
+        } catch (error) {
+            console.error('Error en registro:', error);
+            this.showNotification('Error de conexión', 'error');
+        } finally {
+            submitBtn.textContent = 'Registrarse';
+            submitBtn.disabled = false;
         }
-    } catch (error) {
-        console.error('Error en registro:', error);
-        this.showNotification('Error de conexión', 'error');
-    } finally {
-        submitBtn.textContent = 'Registrarse';
-        submitBtn.disabled = false;
     }
-}
 
     logout() {
         this.token = null;
@@ -224,32 +254,53 @@ class BasketballStore {
         // Mostrar panel de admin si es administrador
         if (this.user.role === 'admin') {
             document.getElementById('admin-panel').style.display = 'block';
+            const createProductBtn = document.getElementById('create-product-btn');
+            const adminOrdersBtn = document.getElementById('admin-orders-btn');
+            if (createProductBtn) createProductBtn.style.display = 'inline-block';
+            if (adminOrdersBtn) adminOrdersBtn.style.display = 'inline-block';
         } else {
             document.getElementById('admin-panel').style.display = 'none';
+            const createProductBtn = document.getElementById('create-product-btn');
+            const adminOrdersBtn = document.getElementById('admin-orders-btn');
+            if (createProductBtn) createProductBtn.style.display = 'none';
+            if (adminOrdersBtn) adminOrdersBtn.style.display = 'none';
         }
 
         this.loadProducts();
+        this.loadCart(); // Cargar carrito al iniciar sesión
     }
+
+    // ==================== PRODUCTOS CON GRAPHQL ====================
 
     async loadProducts() {
         try {
-            console.log('🔄 Cargando productos...');
+            console.log('🔄 Cargando productos con GraphQL...');
             const productsList = document.getElementById('products-list');
             productsList.innerHTML = '<div class="loading">Cargando productos... 🏀</div>';
 
-            const response = await fetch(`${this.API_BASE}/api/products`);
+            // QUERY GRAPHQL para obtener productos
+            const query = `
+                query {
+                    getProducts {
+                        id
+                        name
+                        description
+                        price
+                        category
+                        image
+                        stock
+                        league
+                        isActive
+                        createdAt
+                    }
+                }
+            `;
 
-            if (!response.ok) {
-                throw new Error(`Error HTTP: ${response.status}`);
-            }
+            const data = await this.graphqlQuery(query);
 
-            const data = await response.json();
-            console.log('📦 Respuesta de la API:', data);
-
-            // CORRECCIÓN: Ahora los productos están en data.products
-            if (data.success && Array.isArray(data.products)) {
-                this.products = data.products;
-                console.log(`✅ ${this.products.length} productos cargados`);
+            if (data.getProducts && Array.isArray(data.getProducts)) {
+                this.products = data.getProducts;
+                console.log(`✅ ${this.products.length} productos cargados con GraphQL`);
                 this.renderProducts(this.products);
             } else {
                 throw new Error('Formato de respuesta inválido');
@@ -263,9 +314,65 @@ class BasketballStore {
                     <h3>Error cargando productos</h3>
                     <p>${error.message}</p>
                     <button onclick="app.loadProducts()">🔄 Reintentar</button>
-                    <button onclick="app.testConnection()">🔧 Probar conexión</button>
                 </div>
             `;
+        }
+    }
+
+    async filterProducts(filter) {
+        try {
+            let query;
+
+            switch (filter) {
+                case 'nba':
+                case 'acb':
+                    // Usar GraphQL para filtrar por liga
+                    const league = filter.toUpperCase();
+                    query = `
+                        query {
+                            getProductsByLeague(league: "${league}") {
+                                id
+                                name
+                                description
+                                price
+                                category
+                                image
+                                stock
+                                league
+                                isActive
+                            }
+                        }
+                    `;
+                    const data = await this.graphqlQuery(query);
+                    this.renderProducts(data.getProductsByLeague || []);
+                    return;
+
+                case 'balls':
+                    this.renderProducts(this.products.filter(p => p.category === 'Balones'));
+                    return;
+
+                case 'jerseys':
+                    this.renderProducts(this.products.filter(p => p.category === 'Camisetas'));
+                    return;
+
+                case 'shoes':
+                    this.renderProducts(this.products.filter(p => p.category === 'Calzado'));
+                    return;
+
+                case 'under50':
+                    this.renderProducts(this.products.filter(p => p.price < 50));
+                    return;
+
+                case 'in-stock':
+                    this.renderProducts(this.products.filter(p => p.stock > 0));
+                    return;
+
+                default:
+                    this.renderProducts(this.products);
+            }
+        } catch (error) {
+            console.error('Error filtrando productos:', error);
+            this.showNotification('Error aplicando filtro', 'error');
         }
     }
 
@@ -277,7 +384,7 @@ class BasketballStore {
             productsList.innerHTML = `
                 <div class="no-products">
                     <h3>🏀 No hay productos disponibles</h3>
-                    <p>No se encontraron productos en la tienda.</p>
+                    <p>No se encontraron productos con este filtro.</p>
                     ${this.user && this.user.role === 'admin' ?
                     '<button onclick="showCreateProduct()">➕ Crear primer producto</button>' :
                     '<p>Vuelve más tarde o contacta al administrador.</p>'
@@ -294,17 +401,23 @@ class BasketballStore {
                 <div class="league-badge ${product.league === 'NBA' ? 'nba-badge' : product.league === 'ACB' ? 'acb-badge' : 'both-badge'}">
                     ${product.league}
                 </div>
+                <img src="${product.image || 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400'}" alt="${product.name}" class="product-image">
                 <h3>${product.name}</h3>
                 <p class="description">${product.description}</p>
-                <div class="price">€${product.price}</div>
+                <div class="price">€${product.price.toFixed(2)}</div>
                 <span class="category">${product.category}</span>
                 <div class="stock ${product.stock > 0 ? 'in-stock' : 'out-of-stock'}">
                     ${product.stock > 0 ? `🏀 Stock: ${product.stock} unidades` : '❌ Agotado'}
                 </div>
+                ${this.user && product.stock > 0 ? `
+                    <button class="btn-add-cart" onclick="addToCart('${product.id}')">
+                        🛒 Añadir al Carrito
+                    </button>
+                ` : ''}
                 ${this.user && this.user.role === 'admin' ? `
                     <div class="admin-actions">
-                        <button class="edit-btn" onclick="editProduct('${product._id}')">✏️ Editar</button>
-                        <button class="delete-btn" onclick="deleteProduct('${product._id}')">🗑️ Eliminar</button>
+                        <button class="edit-btn" onclick="editProduct('${product.id}')">✏️ Editar</button>
+                        <button class="delete-btn" onclick="deleteProduct('${product.id}')">🗑️ Eliminar</button>
                     </div>
                 ` : ''}
             `;
@@ -312,42 +425,7 @@ class BasketballStore {
         });
     }
 
-    filterProducts(filter) {
-        let filteredProducts = this.products;
-
-        if (!filteredProducts || !Array.isArray(filteredProducts)) {
-            console.error('No hay productos para filtrar');
-            return;
-        }
-
-        switch (filter) {
-            case 'nba':
-                filteredProducts = this.products.filter(p => p.league === 'NBA');
-                break;
-            case 'acb':
-                filteredProducts = this.products.filter(p => p.league === 'ACB');
-                break;
-            case 'balls':
-                filteredProducts = this.products.filter(p => p.category === 'Balones');
-                break;
-            case 'jerseys':
-                filteredProducts = this.products.filter(p => p.category === 'Camisetas');
-                break;
-            case 'shoes':
-                filteredProducts = this.products.filter(p => p.category === 'Calzado');
-                break;
-            case 'under50':
-                filteredProducts = this.products.filter(p => p.price < 50);
-                break;
-            case 'in-stock':
-                filteredProducts = this.products.filter(p => p.stock > 0);
-                break;
-            default:
-                filteredProducts = this.products;
-        }
-
-        this.renderProducts(filteredProducts);
-    }
+    // ==================== CREAR PRODUCTO (REST - Admin) ====================
 
     async createProduct() {
         const form = document.getElementById('create-product-form');
@@ -386,6 +464,8 @@ class BasketballStore {
             this.showNotification('Error de conexión', 'error');
         }
     }
+
+    // ==================== CHAT CON SOCKET.IO ====================
 
     connectToChat() {
         this.socket = io();
@@ -463,6 +543,8 @@ class BasketballStore {
         }
     }
 
+    // ==================== NOTIFICACIONES ====================
+
     showNotification(message, type = 'info') {
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
@@ -496,62 +578,497 @@ class BasketballStore {
         }, 4000);
     }
 
-    async testConnection() {
+    // ==================== CARRITO CON GRAPHQL ====================
+
+    async loadCart() {
         try {
-            console.log('🔧 Probando conexión con el servidor...');
+            if (!this.user) return;
 
-            const tests = [
-                `${this.API_BASE}/api/health`,
-                `${this.API_BASE}/api/products`,
-                `${this.API_BASE}/api/debug/database`
-            ];
+            console.log('🛒 Cargando carrito con GraphQL...');
 
-            for (const url of tests) {
-                const response = await fetch(url);
-                const data = await response.json();
-                console.log(`📡 ${url}:`, data);
+            const query = `
+                query {
+                    getCart(userId: "${this.user.userId}") {
+                        id
+                        total
+                        items {
+                            id
+                            product {
+                                id
+                                name
+                                price
+                                image
+                                stock
+                                category
+                            }
+                            quantity
+                            price
+                        }
+                    }
+                }
+            `;
+
+            const data = await this.graphqlQuery(query);
+            const cart = data.getCart;
+
+            if (!cart) {
+                this.renderEmptyCart();
+                return;
             }
 
-            this.showNotification('✅ Pruebas de conexión completadas - Revisa la consola', 'success');
+            this.renderCart(cart);
+            this.updateCartBadge(cart.items.length);
+
         } catch (error) {
-            console.error('❌ Error en prueba de conexión:', error);
-            this.showNotification('❌ Error en prueba de conexión', 'error');
+            console.error('❌ Error cargando carrito:', error);
+            this.showNotification('Error cargando carrito', 'error');
+        }
+    }
+
+    async addToCart(productId, quantity = 1) {
+        try {
+            if (!this.user) {
+                this.showNotification('Debes iniciar sesión primero', 'error');
+                showLogin();
+                return;
+            }
+
+            const query = `
+                mutation {
+                    addToCart(
+                        userId: "${this.user.userId}"
+                        productId: "${productId}"
+                        quantity: ${quantity}
+                    ) {
+                        id
+                        total
+                        items {
+                            id
+                            quantity
+                        }
+                    }
+                }
+            `;
+
+            const data = await this.graphqlQuery(query);
+            
+            this.showNotification('✅ Producto añadido al carrito', 'success');
+            this.updateCartBadge(data.addToCart.items.length);
+
+        } catch (error) {
+            console.error('❌ Error añadiendo al carrito:', error);
+            this.showNotification(error.message || 'Error añadiendo al carrito', 'error');
+        }
+    }
+
+    async removeFromCart(itemId) {
+        try {
+            // Usar REST API para eliminar (más simple que GraphQL para esta operación)
+            const response = await fetch(`${this.API_BASE}/api/cart/remove/${itemId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                this.showNotification('Producto eliminado del carrito', 'success');
+                this.loadCart();
+            } else {
+                throw new Error(data.message);
+            }
+
+        } catch (error) {
+            console.error('❌ Error eliminando del carrito:', error);
+            this.showNotification('Error eliminando producto', 'error');
+        }
+    }
+
+    async clearCart() {
+        try {
+            if (!confirm('¿Estás seguro de vaciar el carrito?')) return;
+
+            const query = `
+                mutation {
+                    clearCart(userId: "${this.user.userId}") {
+                        id
+                        total
+                    }
+                }
+            `;
+
+            await this.graphqlQuery(query);
+            
+            this.showNotification('Carrito vaciado', 'success');
+            this.loadCart();
+
+        } catch (error) {
+            console.error('❌ Error vaciando carrito:', error);
+            this.showNotification('Error vaciando carrito', 'error');
+        }
+    }
+
+    async checkout() {
+        try {
+            if (!confirm('¿Confirmar pedido?')) return;
+
+            const response = await fetch(`${this.API_BASE}/api/orders/checkout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                this.showNotification('🎉 ¡Pedido realizado con éxito!', 'success');
+                this.loadCart();
+                showMyOrders();
+            } else {
+                throw new Error(data.message);
+            }
+
+        } catch (error) {
+            console.error('❌ Error en checkout:', error);
+            this.showNotification(error.message || 'Error procesando pedido', 'error');
+        }
+    }
+
+    renderCart(cart) {
+        const cartItems = document.getElementById('cart-items');
+        
+        if (!cart.items || cart.items.length === 0) {
+            this.renderEmptyCart();
+            return;
+        }
+
+        cartItems.innerHTML = cart.items.map(item => `
+            <div class="cart-item">
+                <img src="${item.product.image}" alt="${item.product.name}">
+                <div class="item-details">
+                    <h3>${item.product.name}</h3>
+                    <p class="category">${item.product.category}</p>
+                    <p class="price">€${item.price.toFixed(2)} c/u</p>
+                </div>
+                <div class="item-quantity">
+                    <button onclick="app.updateCartQuantity('${item.id}', ${item.quantity - 1})">-</button>
+                    <span>${item.quantity}</span>
+                    <button onclick="app.updateCartQuantity('${item.id}', ${item.quantity + 1})">+</button>
+                </div>
+                <div class="item-total">
+                    <p>€${(item.price * item.quantity).toFixed(2)}</p>
+                </div>
+                <button class="remove-btn" onclick="app.removeFromCart('${item.id}')">🗑️</button>
+            </div>
+        `).join('');
+
+        document.getElementById('cart-subtotal').textContent = `€${cart.total.toFixed(2)}`;
+        document.getElementById('cart-total').textContent = `€${cart.total.toFixed(2)}`;
+    }
+
+    renderEmptyCart() {
+        const cartItems = document.getElementById('cart-items');
+        cartItems.innerHTML = `
+            <div class="empty-cart">
+                <h3>🛒 Tu carrito está vacío</h3>
+                <p>¡Añade productos para empezar a comprar!</p>
+                <button onclick="showProducts()" class="btn-primary">Ver Productos</button>
+            </div>
+        `;
+        document.getElementById('cart-subtotal').textContent = '€0.00';
+        document.getElementById('cart-total').textContent = '€0.00';
+        this.updateCartBadge(0);
+    }
+
+    updateCartBadge(count) {
+        const badge = document.getElementById('cart-count');
+        if (badge) {
+            badge.textContent = count || 0;
+            badge.style.display = count > 0 ? 'inline' : 'none';
+        }
+    }
+
+    async updateCartQuantity(itemId, newQuantity) {
+        if (newQuantity < 1) {
+            this.removeFromCart(itemId);
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.API_BASE}/api/cart/update/${itemId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify({ quantity: newQuantity })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                this.loadCart();
+            } else {
+                throw new Error(data.message);
+            }
+
+        } catch (error) {
+            console.error('❌ Error actualizando cantidad:', error);
+            this.showNotification('Error actualizando cantidad', 'error');
+        }
+    }
+
+    // ==================== PEDIDOS CON GRAPHQL ====================
+
+    async loadMyOrders() {
+        try {
+            if (!this.user) return;
+
+            console.log('📦 Cargando mis pedidos con GraphQL...');
+
+            const query = `
+                query {
+                    getMyOrders(userId: "${this.user.userId}") {
+                        id
+                        total
+                        status
+                        createdAt
+                        products {
+                            product {
+                                name
+                                price
+                                image
+                            }
+                            quantity
+                            price
+                        }
+                    }
+                }
+            `;
+
+            const data = await this.graphqlQuery(query);
+            const orders = data.getMyOrders || [];
+
+            this.renderMyOrders(orders);
+
+        } catch (error) {
+            console.error('❌ Error cargando pedidos:', error);
+            this.showNotification('Error cargando pedidos', 'error');
+        }
+    }
+
+    renderMyOrders(orders) {
+        const ordersList = document.getElementById('my-orders-list');
+
+        if (!orders || orders.length === 0) {
+            ordersList.innerHTML = `
+                <div class="empty-orders">
+                    <h3>📦 No tienes pedidos aún</h3>
+                    <p>Realiza tu primer pedido para verlo aquí</p>
+                    <button onclick="showProducts()" class="btn-primary">Ver Productos</button>
+                </div>
+            `;
+            return;
+        }
+
+        ordersList.innerHTML = orders.map(order => {
+            const date = new Date(order.createdAt).toLocaleDateString('es-ES');
+            const statusClass = order.status === 'completed' ? 'completed' : 'pending';
+            const statusText = order.status === 'completed' ? '✅ Completado' : '⏳ Pendiente';
+
+            return `
+                <div class="order-card ${statusClass}">
+                    <div class="order-header">
+                        <h3>Pedido #${order.id.slice(-8)}</h3>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                    </div>
+                    <div class="order-info">
+                        <p>📅 Fecha: ${date}</p>
+                        <p>💰 Total: €${order.total.toFixed(2)}</p>
+                        <p>📦 Productos: ${order.products.length}</p>
+                    </div>
+                    <div class="order-products">
+                        ${order.products.map(p => `
+                            <div class="order-product-item">
+                                <img src="${p.product.image}" alt="${p.product.name}">
+                                <span>${p.product.name} x${p.quantity}</span>
+                                <span>€${(p.price * p.quantity).toFixed(2)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="btn-secondary" onclick="viewOrderDetails('${order.id}')">Ver Detalles</button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async loadAllOrders() {
+        try {
+            if (!this.user || this.user.role !== 'admin') return;
+
+            console.log('📊 Cargando todos los pedidos (Admin)...');
+
+            const query = `
+                query {
+                    getOrders {
+                        id
+                        total
+                        status
+                        createdAt
+                        user {
+                            username
+                            email
+                        }
+                        products {
+                            product {
+                                name
+                            }
+                            quantity
+                        }
+                    }
+                }
+            `;
+
+            const data = await this.graphqlQuery(query);
+            this.allOrders = data.getOrders || [];
+
+            this.renderAllOrders(this.allOrders);
+
+        } catch (error) {
+            console.error('❌ Error cargando pedidos:', error);
+            this.showNotification('Error cargando pedidos', 'error');
+        }
+    }
+
+    renderAllOrders(orders) {
+        const ordersList = document.getElementById('all-orders-list');
+
+        if (!orders || orders.length === 0) {
+            ordersList.innerHTML = `
+                <div class="empty-orders">
+                    <h3>📦 No hay pedidos en el sistema</h3>
+                </div>
+            `;
+            return;
+        }
+
+        ordersList.innerHTML = orders.map(order => {
+            const date = new Date(order.createdAt).toLocaleDateString('es-ES');
+            const statusClass = order.status === 'completed' ? 'completed' : 'pending';
+            const statusText = order.status === 'completed' ? '✅ Completado' : '⏳ Pendiente';
+
+            return `
+                <div class="order-card admin ${statusClass}">
+                    <div class="order-header">
+                        <div>
+                            <h3>Pedido #${order.id.slice(-8)}</h3>
+                            <p class="customer-info">👤 ${order.user.username} (${order.user.email})</p>
+                        </div>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                    </div>
+                    <div class="order-info">
+                        <p>📅 ${date}</p>
+                        <p>💰 €${order.total.toFixed(2)}</p>
+                        <p>📦 ${order.products.length} productos</p>
+                    </div>
+                    <div class="admin-actions">
+                        ${order.status === 'pending' ? 
+                            `<button class="btn-success" onclick="app.updateOrderStatus('${order.id}', 'completed')">✅ Marcar Completado</button>` :
+                            `<button class="btn-secondary" onclick="app.updateOrderStatus('${order.id}', 'pending')">⏳ Marcar Pendiente</button>`
+                        }
+                        <button class="btn-secondary" onclick="viewOrderDetails('${order.id}')">Ver Detalles</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async updateOrderStatus(orderId, newStatus) {
+        try {
+            const query = `
+                mutation {
+                    updateOrderStatus(
+                        orderId: "${orderId}"
+                        status: "${newStatus}"
+                    ) {
+                        id
+                        status
+                    }
+                }
+            `;
+
+            await this.graphqlQuery(query);
+            
+            this.showNotification(`Pedido actualizado a ${newStatus}`, 'success');
+            this.loadAllOrders();
+
+        } catch (error) {
+            console.error('❌ Error actualizando pedido:', error);
+            this.showNotification('Error actualizando pedido', 'error');
+        }
+    }
+
+    // ==================== DEBUG ====================
+
+    async testConnection() {
+        try {
+            console.log('🔧 Probando conexión GraphQL...');
+
+            const query = `query { hello }`;
+            const data = await this.graphqlQuery(query);
+            
+            console.log('✅ GraphQL Response:', data);
+            this.showNotification('✅ GraphQL funcionando correctamente', 'success');
+        } catch (error) {
+            console.error('❌ Error en prueba de GraphQL:', error);
+            this.showNotification('❌ Error en GraphQL', 'error');
         }
     }
 }
 
-// Funciones globales para los botones
+// ==================== FUNCIONES GLOBALES ====================
+
 function showLogin() {
+    hideAllSections();
     document.getElementById('login-section').style.display = 'block';
-    document.getElementById('register-section').style.display = 'none';
-    document.getElementById('products-section').style.display = 'none';
-    document.getElementById('chat-section').style.display = 'none';
-    document.getElementById('create-product-section').style.display = 'none';
 }
 
 function showRegister() {
-    document.getElementById('login-section').style.display = 'none';
+    hideAllSections();
     document.getElementById('register-section').style.display = 'block';
-    document.getElementById('products-section').style.display = 'none';
-    document.getElementById('chat-section').style.display = 'none';
-    document.getElementById('create-product-section').style.display = 'none';
 }
 
 function showProducts() {
-    document.getElementById('login-section').style.display = 'none';
-    document.getElementById('register-section').style.display = 'none';
+    hideAllSections();
     document.getElementById('products-section').style.display = 'block';
-    document.getElementById('chat-section').style.display = 'none';
-    document.getElementById('create-product-section').style.display = 'none';
     app.loadProducts();
 }
 
+function showCart() {
+    hideAllSections();
+    document.getElementById('cart-section').style.display = 'block';
+    app.loadCart();
+}
+
+function showMyOrders() {
+    hideAllSections();
+    document.getElementById('my-orders-section').style.display = 'block';
+    app.loadMyOrders();
+}
+
+function showAllOrders() {
+    hideAllSections();
+    document.getElementById('all-orders-section').style.display = 'block';
+    app.loadAllOrders();
+}
+
 function showChat() {
-    document.getElementById('login-section').style.display = 'none';
-    document.getElementById('register-section').style.display = 'none';
-    document.getElementById('products-section').style.display = 'none';
+    hideAllSections();
     document.getElementById('chat-section').style.display = 'block';
-    document.getElementById('create-product-section').style.display = 'none';
 
     setTimeout(() => {
         const messages = document.getElementById('messages');
@@ -562,19 +1079,53 @@ function showChat() {
 }
 
 function showCreateProduct() {
+    hideAllSections();
+    document.getElementById('create-product-section').style.display = 'block';
+}
+
+function hideAllSections() {
     document.getElementById('login-section').style.display = 'none';
     document.getElementById('register-section').style.display = 'none';
     document.getElementById('products-section').style.display = 'none';
+    document.getElementById('cart-section').style.display = 'none';
+    document.getElementById('my-orders-section').style.display = 'none';
+    document.getElementById('all-orders-section').style.display = 'none';
     document.getElementById('chat-section').style.display = 'none';
-    document.getElementById('create-product-section').style.display = 'block';
+    document.getElementById('create-product-section').style.display = 'none';
 }
 
 function logout() {
     app.logout();
 }
 
+function clearCart() {
+    app.clearCart();
+}
+
+function checkout() {
+    app.checkout();
+}
+
+function filterOrders(status) {
+    if (status === 'all') {
+        app.renderAllOrders(app.allOrders);
+    } else {
+        const filtered = app.allOrders.filter(o => o.status === status);
+        app.renderAllOrders(filtered);
+    }
+}
+
+function viewOrderDetails(orderId) {
+    // Implementar modal de detalles si es necesario
+    alert('Ver detalles del pedido: ' + orderId);
+}
+
+function closeOrderModal() {
+    document.getElementById('order-modal').style.display = 'none';
+}
+
 function editProduct(productId) {
-    const product = app.products.find(p => p._id === productId);
+    const product = app.products.find(p => p.id === productId);
     if (product) {
         if (confirm(`¿Editar producto: ${product.name}?`)) {
             const newName = prompt('Nuevo nombre:', product.name);
@@ -611,7 +1162,7 @@ async function updateProduct(productId, updates) {
 }
 
 async function deleteProduct(productId) {
-    const product = app.products.find(p => p._id === productId);
+    const product = app.products.find(p => p.id === productId);
     if (product && confirm(`¿Estás seguro de eliminar "${product.name}"?`)) {
         try {
             const response = await fetch(`${app.API_BASE}/api/products/${productId}`, {
@@ -636,12 +1187,20 @@ async function deleteProduct(productId) {
     }
 }
 
-// Inicializar la aplicación cuando el DOM esté listo
+async function addToCart(productId) {
+    app.addToCart(productId, 1);
+}
+
+// ==================== INICIALIZACIÓN ====================
+
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new BasketballStore();
+    console.log('🏀 BasketballStore inicializado con GraphQL');
+    console.log('📡 GraphQL Endpoint:', window.app.GRAPHQL_ENDPOINT);
 });
 
-// Añadir estilos CSS para las notificaciones y estados
+// ==================== ESTILOS ADICIONALES ====================
+
 const style = document.createElement('style');
 style.textContent = `
     @keyframes slideIn {

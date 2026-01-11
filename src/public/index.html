@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🏀 Tienda de Baloncesto NBA/ACB</title>
+    <title>🏀 Tienda de Baloncesto NBA/ACB - GraphQL</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -13,7 +13,7 @@
         <header>
             <div class="logo">
                 <h1>🏀 <span>Basket</span>Store</h1>
-                <p>Tu tienda oficial de baloncesto NBA & ACB</p>
+                <p>Tu tienda oficial de baloncesto NBA & ACB con GraphQL</p>
             </div>
             <nav>
                 <div id="auth-buttons" class="auth-section">
@@ -23,16 +23,22 @@
                 <div id="user-menu" class="auth-section" style="display: none;">
                     <span id="username-display" class="user-info"></span>
                     <button class="nav-btn" onclick="showProducts()">🛍️ Productos</button>
+                    <button class="nav-btn" onclick="showCart()">
+                        🛒 Carrito <span id="cart-count" class="badge">0</span>
+                    </button>
+                    <button class="nav-btn" onclick="showMyOrders()">📦 Mis Pedidos</button>
                     <button class="nav-btn" onclick="showChat()">💬 Chat</button>
                     <button class="nav-btn admin-btn" onclick="showCreateProduct()" id="create-product-btn"
-                        style="display: none;">➕ Producto</button>
+                        style="display: none;">➕ Nuevo Producto</button>
+                    <button class="nav-btn admin-btn" onclick="showAllOrders()" id="admin-orders-btn"
+                        style="display: none;">📊 Gestión Pedidos</button>
                     <button class="nav-btn logout-btn" onclick="logout()">🚪 Salir</button>
                 </div>
             </nav>
         </header>
 
         <main>
-            <!-- Sección de Login -->
+            <!-- ==================== SECCIÓN DE LOGIN ==================== -->
             <div id="login-section" class="section">
                 <h2>🚪 Iniciar Sesión</h2>
                 <form id="login-form" class="auth-form">
@@ -47,9 +53,13 @@
                     <button type="submit" class="submit-btn">🎯 Entrar</button>
                 </form>
                 <p class="auth-switch">¿No tienes cuenta? <a href="#" onclick="showRegister()">Regístrate aquí</a></p>
+                <div class="demo-credentials">
+                    <p><strong>🔑 Credenciales de prueba:</strong></p>
+                    <p>Admin: <code>admin@baloncesto.com</code> / <code>admin123</code></p>
+                </div>
             </div>
 
-            <!-- Sección de Registro -->
+            <!-- ==================== SECCIÓN DE REGISTRO ==================== -->
             <div id="register-section" class="section" style="display: none;">
                 <h2>📝 Crear Cuenta</h2>
                 <form id="register-form" class="auth-form">
@@ -67,7 +77,7 @@
                             minlength="6">
                     </div>
                     <div class="form-group">
-                        <label for="role">Tipo de cuenta:</label>
+                        <label for="role">👥 Tipo de cuenta:</label>
                         <select id="role" name="role" required>
                             <option value="user">Usuario Normal</option>
                             <option value="admin">Administrador</option>
@@ -78,10 +88,10 @@
                 <p class="auth-switch">¿Ya tienes cuenta? <a href="#" onclick="showLogin()">Inicia sesión aquí</a></p>
             </div>
 
-            <!-- Sección de Productos -->
+            <!-- ==================== SECCIÓN DE PRODUCTOS ==================== -->
             <div id="products-section" class="section" style="display: none;">
                 <div class="section-header">
-                    <h2>🛍️ Nuestros Productos</h2>
+                    <h2>🛍️ Catálogo de Productos</h2>
                     <div id="admin-panel" style="display: none;">
                         <button class="admin-btn" onclick="showCreateProduct()">➕ Nuevo Producto</button>
                     </div>
@@ -103,7 +113,50 @@
                 </div>
             </div>
 
-            <!-- Sección de Crear Producto (Solo Admin) -->
+            <!-- ==================== SECCIÓN DE CARRITO ==================== -->
+            <div id="cart-section" class="section" style="display: none;">
+                <h2>🛒 Mi Carrito de Compras</h2>
+                <div id="cart-items" class="cart-container">
+                    <!-- Items del carrito se cargarán aquí -->
+                </div>
+                <div class="cart-summary">
+                    <div class="summary-row">
+                        <span>Subtotal:</span>
+                        <span id="cart-subtotal">€0.00</span>
+                    </div>
+                    <div class="summary-row total">
+                        <span><strong>Total:</strong></span>
+                        <span id="cart-total"><strong>€0.00</strong></span>
+                    </div>
+                    <div class="cart-actions">
+                        <button class="btn-secondary" onclick="clearCart()">🗑️ Vaciar Carrito</button>
+                        <button class="btn-primary" onclick="checkout()">💳 Realizar Pedido</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== SECCIÓN MIS PEDIDOS ==================== -->
+            <div id="my-orders-section" class="section" style="display: none;">
+                <h2>📦 Mis Pedidos</h2>
+                <div id="my-orders-list" class="orders-list">
+                    <!-- Pedidos se cargarán aquí -->
+                </div>
+            </div>
+
+            <!-- ==================== SECCIÓN ADMIN: TODOS LOS PEDIDOS ==================== -->
+            <div id="all-orders-section" class="section" style="display: none;">
+                <h2>📊 Gestión de Pedidos (Admin)</h2>
+                <div class="filter-buttons">
+                    <button class="filter-btn active" onclick="filterOrders('all')">Todos</button>
+                    <button class="filter-btn" onclick="filterOrders('pending')">⏳ Pendientes</button>
+                    <button class="filter-btn" onclick="filterOrders('completed')">✅ Completados</button>
+                </div>
+                <div id="all-orders-list" class="orders-list">
+                    <!-- Todos los pedidos se cargarán aquí -->
+                </div>
+            </div>
+
+            <!-- ==================== SECCIÓN CREAR PRODUCTO ==================== -->
             <div id="create-product-section" class="section" style="display: none;">
                 <h2>➕ Crear Nuevo Producto</h2>
                 <form id="create-product-form" class="product-form">
@@ -136,7 +189,6 @@
                                 <option value="Equipamiento">⚙️ Equipamiento</option>
                                 <option value="Accesorios">🎒 Accesorios</option>
                                 <option value="Ropa">👖 Ropa</option>
-                                <option value="Otros">🔧 Otros</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -157,7 +209,8 @@
                         </div>
                         <div class="form-group">
                             <label for="product-image">🖼️ URL Imagen:</label>
-                            <input type="url" id="product-image" name="image" placeholder="https://...">
+                            <input type="url" id="product-image" name="image"
+                                placeholder="https://images.unsplash.com/...">
                         </div>
                     </div>
 
@@ -168,7 +221,7 @@
                 </form>
             </div>
 
-            <!-- Sección de Chat -->
+            <!-- ==================== SECCIÓN DE CHAT ==================== -->
             <div id="chat-section" class="section" style="display: none;">
                 <h2>💬 Chat en Tiempo Real</h2>
                 <div id="chat-container">
@@ -185,14 +238,27 @@
         </main>
 
         <footer>
-            <p>🏀 BasketStore </p>
+            <p>🏀 BasketStore 2026 - E-commerce con GraphQL, JWT y Socket.IO</p>
+            <p class="tech-stack">
+                <span class="tech-badge">GraphQL</span>
+                <span class="tech-badge">MongoDB</span>
+                <span class="tech-badge">Socket.IO</span>
+                <span class="tech-badge">JWT</span>
+            </p>
         </footer>
+    </div>
+
+    <!-- Modal para ver detalles del pedido -->
+    <div id="order-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeOrderModal()">&times;</span>
+            <h2>📦 Detalles del Pedido</h2>
+            <div id="order-details"></div>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="client.js"></script>
 </body>
-
-
 
 </html>
