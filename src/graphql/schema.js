@@ -1,6 +1,6 @@
-const { gql } = require('graphql-tag'); // Necesitarás instalar graphql-tag si no va
-
 const typeDefs = `#graphql
+  # ==================== TIPOS ====================
+  
   type Product {
     id: ID!
     name: String!
@@ -10,38 +10,117 @@ const typeDefs = `#graphql
     image: String
     stock: Int
     league: String
+    sizes: [String]
+    isActive: Boolean
+    createdBy: User
+    createdAt: String
+  }
+
+  type User {
+    id: ID!
+    username: String!
+    email: String!
+    role: String!
   }
 
   type OrderProduct {
     product: Product
-    quantity: Int
-    price: Float
+    quantity: Int!
+    price: Float!
   }
 
   type Order {
     id: ID!
-    user: String # Devolvemos el ID del usuario
-    products: [OrderProduct]
-    total: Float
-    status: String
+    user: User
+    products: [OrderProduct]!
+    total: Float!
+    status: String!
     createdAt: String
   }
 
-  type Query {
-    hello: String
-    getProducts: [Product]
-    getProduct(id: ID!): Product
-    getOrders: [Order] # Solo para admins idealmente
+  type CartItem {
+    id: ID!
+    product: Product
+    quantity: Int!
+    price: Float!
+    size: String
   }
 
+  type Cart {
+    id: ID!
+    user: String!
+    items: [CartItem]!
+    total: Float!
+  }
+
+  type OrderStats {
+    totalOrders: Int!
+    pendingOrders: Int!
+    completedOrders: Int!
+    totalRevenue: Float!
+    averageOrderValue: Float!
+  }
+
+  # ==================== QUERIES ====================
+  
+  type Query {
+    # Test
+    hello: String!
+    
+    # Productos
+    getProducts: [Product]!
+    getProduct(id: ID!): Product
+    getProductsByLeague(league: String!): [Product]!
+    
+    # Pedidos
+    getOrders(status: String): [Order]!
+    getOrder(id: ID!): Order
+    getMyOrders(userId: ID!): [Order]!
+    
+    # Carrito
+    getCart(userId: ID!): Cart
+    
+    # Estadísticas
+    getOrderStats: OrderStats
+  }
+
+  # ==================== INPUTS ====================
+  
   input ProductInput {
     productId: ID!
     quantity: Int!
     price: Float!
   }
 
+  # ==================== MUTATIONS ====================
+  
   type Mutation {
-    createOrder(userId: ID!, products: [ProductInput]!, total: Float!): Order
+    # Pedidos
+    createOrder(
+      userId: ID!
+      products: [ProductInput]!
+      total: Float!
+    ): Order
+    
+    updateOrderStatus(
+      orderId: ID!
+      status: String!
+    ): Order
+    
+    # Carrito
+    addToCart(
+      userId: ID!
+      productId: ID!
+      quantity: Int!
+      size: String
+    ): Cart
+    
+    removeFromCart(
+      userId: ID!
+      itemId: ID!
+    ): Cart
+    
+    clearCart(userId: ID!): Cart
   }
 `;
 
