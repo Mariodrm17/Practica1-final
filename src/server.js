@@ -1,126 +1,458 @@
-require("dotenv").config();
-const express = require("express");
-const mongoose = require("mongoose");
-const socketIo = require("socket.io");
-const http = require("http");
-const path = require("path");
-const cors = require("cors");
+// server.js - VERSIÓN CON GRAPHQL COMPLETO (Queries + Mutations)
+require('dotenv').config();
+const express = require('express');
+const http = require('http');
+const socketIO = require('socket.io');
+const mongoose = require('mongoose');
+const path = require('path');
 
-// ================== IMPORTAR MODELOS Y RUTAS ==================
-const Product = require("./models/Product");
-const User = require("./models/User");
-const ChatMessage = require("./models/ChatMessage");
-const authRoutes = require("./routes/authRoutes");
-const productRoutes = require("./routes/productRoutes");
-const chatRoutes = require("./routes/chatRoutes");
-const cartRoutes = require("./routes/cartRoutes");
-const orderRoutes = require("./routes/orderRoutes");
-const adminRoutes = require("./routes/adminRoutes");
+// Importar rutas
+const authRoutes = require('./routes/authRoutes');
+const productRoutes = require('./routes/productRoutes');
+const cartRoutes = require('./routes/cartRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 
-// GRAPHQL RESOLVERS (SIN APOLLO)
+// Importar modelos
+const Product = require('./models/Product');
+const User = require('./models/User');
+const Cart = require('./models/Cart');
+const Order = require('./models/Order');
+
+// Importar schema y resolvers de GraphQL
+const typeDefs = require('./graphql/schema');
 const resolvers = require('./graphql/resolvers');
 
 const app = express();
 const server = http.createServer(app);
+const io = socketIO(server);
 
-// Configuración de Socket.IO
-const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
-
-// ================== MIDDLEWARE ==================
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+// Middleware
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// ================== GRAPHQL ENDPOINT BÁSICO (SIN APOLLO) ==================
+// ==================== MONGODB CONNECTION ====================
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log('✅ Conectado a MongoDB Atlas');
+    initializeDefaultData();
+  })
+  .catch((err) => {
+    console.error('❌ Error conectando a MongoDB:', err);
+    process.exit(1);
+  });
+
+// ==================== INICIALIZACIÓN DE DATOS ====================
+async function initializeDefaultData() {
+  try {
+    // Verificar si hay productos
+    const productCount = await Product.countDocuments();
+    console.log(`📦 Productos en BD: ${productCount}`);
+
+    if (productCount === 0) {
+      console.log('📝 Creando productos de ejemplo...');
+      const defaultProducts = [
+        // NBA Products
+        {
+          name: "Balón Spalding NBA Official",
+          description: "Balón oficial de la NBA, tamaño 7, cuero genuino",
+          price: 89.99,
+          category: "Balones",
+          image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400",
+          stock: 15,
+          league: "NBA",
+          sizes: ["7"],
+          isActive: true
+        },
+        {
+          name: "Camiseta Lakers LeBron James",
+          description: "Camiseta oficial Nike de los Lakers, temporada 2024",
+          price: 124.99,
+          category: "Camisetas",
+          image: "https://images.unsplash.com/photo-1608245449230-4ac19066d2d0?w=400",
+          stock: 8,
+          league: "NBA",
+          sizes: ["S", "M", "L", "XL"],
+          isActive: true
+        },
+        {
+          name: "Zapatillas Nike LeBron XXI",
+          description: "Últimas zapatillas de la línea LeBron James",
+          price: 199.99,
+          category: "Calzado",
+          image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400",
+          stock: 12,
+          league: "NBA",
+          sizes: ["40", "41", "42", "43", "44"],
+          isActive: true
+        },
+        {
+          name: "Camiseta Warriors Curry",
+          description: "Camiseta oficial de Stephen Curry #30",
+          price: 119.99,
+          category: "Camisetas",
+          image: "https://images.unsplash.com/photo-1608245449230-4ac19066d2d0?w=400",
+          stock: 10,
+          league: "NBA",
+          sizes: ["S", "M", "L", "XL"],
+          isActive: true
+        },
+        {
+          name: "Pantalón Corto NBA",
+          description: "Pantalón de entrenamiento oficial NBA",
+          price: 49.99,
+          category: "Ropa",
+          image: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=400",
+          stock: 20,
+          league: "NBA",
+          sizes: ["S", "M", "L", "XL"],
+          isActive: true
+        },
+        {
+          name: "Mochila NBA Team",
+          description: "Mochila deportiva con logo NBA",
+          price: 39.99,
+          category: "Accesorios",
+          image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400",
+          stock: 25,
+          league: "NBA",
+          isActive: true
+        },
+        {
+          name: "Gorra Chicago Bulls",
+          description: "Gorra ajustable oficial de los Bulls",
+          price: 29.99,
+          category: "Accesorios",
+          image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=400",
+          stock: 30,
+          league: "NBA",
+          isActive: true
+        },
+        {
+          name: "Camiseta Bucks Giannis",
+          description: "Camiseta oficial de Giannis Antetokounmpo",
+          price: 124.99,
+          category: "Camisetas",
+          image: "https://images.unsplash.com/photo-1608245449230-4ac19066d2d0?w=400",
+          stock: 7,
+          league: "NBA",
+          sizes: ["S", "M", "L", "XL"],
+          isActive: true
+        },
+        {
+          name: "Medias NBA Performance",
+          description: "Pack de 3 pares de medias técnicas",
+          price: 24.99,
+          category: "Ropa",
+          image: "https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?w=400",
+          stock: 50,
+          league: "NBA",
+          sizes: ["S-M", "L-XL"],
+          isActive: true
+        },
+
+        // ACB Products
+        {
+          name: "Balón Molten ACB Official",
+          description: "Balón oficial de la Liga ACB",
+          price: 79.99,
+          category: "Balones",
+          image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400",
+          stock: 12,
+          league: "ACB",
+          sizes: ["7"],
+          isActive: true
+        },
+        {
+          name: "Camiseta Real Madrid Baloncesto",
+          description: "Camiseta oficial del Real Madrid de baloncesto",
+          price: 89.99,
+          category: "Camisetas",
+          image: "https://images.unsplash.com/photo-1608245449230-4ac19066d2d0?w=400",
+          stock: 15,
+          league: "ACB",
+          sizes: ["S", "M", "L", "XL"],
+          isActive: true
+        },
+        {
+          name: "Camiseta FC Barcelona Basket",
+          description: "Camiseta oficial del Barça de baloncesto",
+          price: 89.99,
+          category: "Camisetas",
+          image: "https://images.unsplash.com/photo-1608245449230-4ac19066d2d0?w=400",
+          stock: 18,
+          league: "ACB",
+          sizes: ["S", "M", "L", "XL"],
+          isActive: true
+        },
+        {
+          name: "Sudadera ACB",
+          description: "Sudadera con capucha oficial de la ACB",
+          price: 59.99,
+          category: "Ropa",
+          image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=400",
+          stock: 22,
+          league: "ACB",
+          sizes: ["S", "M", "L", "XL", "XXL"],
+          isActive: true
+        },
+        {
+          name: "Balón Mini ACB",
+          description: "Balón de colección tamaño mini",
+          price: 19.99,
+          category: "Balones",
+          image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400",
+          stock: 40,
+          league: "ACB",
+          sizes: ["Mini"],
+          isActive: true
+        },
+        {
+          name: "Muñequeras ACB Pro",
+          description: "Set de 2 muñequeras profesionales",
+          price: 14.99,
+          category: "Accesorios",
+          image: "https://images.unsplash.com/photo-1556906781-9a412961c28c?w=400",
+          stock: 35,
+          league: "ACB",
+          isActive: true
+        },
+
+        // Productos para ambas ligas
+        {
+          name: "Botella Térmica Basketball",
+          description: "Botella térmica de acero inoxidable 750ml",
+          price: 24.99,
+          category: "Accesorios",
+          image: "https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=400",
+          stock: 45,
+          league: "Ambas",
+          isActive: true
+        },
+        {
+          name: "Red para canasta profesional",
+          description: "Red de nylon de alta resistencia",
+          price: 12.99,
+          category: "Equipamiento",
+          image: "https://images.unsplash.com/photo-1559692048-79a3f837883d?w=400",
+          stock: 60,
+          league: "Ambas",
+          isActive: true
+        },
+        {
+          name: "Inflador de balones con manómetro",
+          description: "Inflador manual con medidor de presión",
+          price: 16.99,
+          category: "Equipamiento",
+          image: "https://images.unsplash.com/photo-1593214452396-2399e6c83226?w=400",
+          stock: 28,
+          league: "Ambas",
+          isActive: true
+        }
+      ];
+
+      const adminUser = await User.findOne({ email: 'admin@baloncesto.com' });
+      
+      const productsWithCreator = defaultProducts.map(product => ({
+        ...product,
+        createdBy: adminUser ? adminUser._id : null
+      }));
+
+      await Product.insertMany(productsWithCreator);
+      console.log('✅ 18 productos de baloncesto creados');
+    }
+
+    // Verificar usuario admin
+    const adminCount = await User.countDocuments({ role: 'admin' });
+    console.log(`👤 Administradores: ${adminCount}`);
+    
+    if (adminCount === 0) {
+      console.log('👤 Creando usuario admin...');
+      const bcrypt = require('bcryptjs');
+      const hashedPassword = await bcrypt.hash('admin123', 10);
+      
+      await User.create({
+        username: 'admin',
+        email: 'admin@baloncesto.com',
+        password: hashedPassword,
+        role: 'admin'
+      });
+      console.log('✅ Usuario admin creado: admin@baloncesto.com / admin123');
+    }
+
+  } catch (error) {
+    console.error('❌ Error inicializando datos:', error);
+  }
+}
+
+// ==================== GRAPHQL ENDPOINT (MODO BÁSICO CON MUTATIONS) ====================
 
 app.post('/graphql', async (req, res) => {
   try {
-    const { query } = req.body;
+    const { query, variables } = req.body;
     
-    console.log('📡 GraphQL Query recibida:', query.substring(0, 100) + '...');
+    console.log('📡 GraphQL recibida:', query.substring(0, 100) + '...');
     
-    // Query: getProducts
-    if (query.includes('getProducts') && !query.includes('getProductsByLeague')) {
-      const products = await resolvers.Query.getProducts();
-      return res.json({ data: { getProducts: products } });
-    }
+    // Detectar si es QUERY o MUTATION
+    const isQuery = query.trim().startsWith('query') || (!query.trim().startsWith('mutation'));
+    const isMutation = query.trim().startsWith('mutation');
     
-    // Query: getProductsByLeague
-    if (query.includes('getProductsByLeague')) {
-      const leagueMatch = query.match(/league:\s*"(\w+)"/);
-      if (leagueMatch) {
-        const products = await resolvers.Query.getProductsByLeague(null, { league: leagueMatch[1] });
-        return res.json({ data: { getProductsByLeague: products } });
+    // ==================== QUERIES ====================
+    
+    if (isQuery && !isMutation) {
+      // Query: getProducts
+      if (query.includes('getProducts') && !query.includes('getProductsByLeague')) {
+        const products = await resolvers.Query.getProducts();
+        return res.json({ data: { getProducts: products } });
+      }
+      
+      // Query: getProductsByLeague
+      if (query.includes('getProductsByLeague')) {
+        const leagueMatch = query.match(/league:\s*"(\w+)"/);
+        if (leagueMatch) {
+          const products = await resolvers.Query.getProductsByLeague(null, { league: leagueMatch[1] });
+          return res.json({ data: { getProductsByLeague: products } });
+        }
+      }
+      
+      // Query: getProduct (por ID)
+      if (query.includes('getProduct(') || query.includes('getProduct (')) {
+        const idMatch = query.match(/id:\s*"([^"]+)"/);
+        if (idMatch) {
+          const product = await resolvers.Query.getProduct(null, { id: idMatch[1] });
+          return res.json({ data: { getProduct: product } });
+        }
+      }
+      
+      // Query: getOrders
+      if (query.includes('getOrders')) {
+        const statusMatch = query.match(/status:\s*"(\w+)"/);
+        const status = statusMatch ? statusMatch[1] : null;
+        const orders = await resolvers.Query.getOrders(null, { status });
+        return res.json({ data: { getOrders: orders } });
+      }
+      
+      // Query: getOrder (por ID)
+      if (query.includes('getOrder(') || query.includes('getOrder (')) {
+        const idMatch = query.match(/id:\s*"([^"]+)"/);
+        if (idMatch) {
+          const order = await resolvers.Query.getOrder(null, { id: idMatch[1] });
+          return res.json({ data: { getOrder: order } });
+        }
+      }
+      
+      // Query: getMyOrders
+      if (query.includes('getMyOrders')) {
+        const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
+        if (userIdMatch) {
+          const orders = await resolvers.Query.getMyOrders(null, { userId: userIdMatch[1] });
+          return res.json({ data: { getMyOrders: orders } });
+        }
+      }
+      
+      // Query: getCart
+      if (query.includes('getCart')) {
+        const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
+        if (userIdMatch) {
+          const cart = await resolvers.Query.getCart(null, { userId: userIdMatch[1] });
+          return res.json({ data: { getCart: cart } });
+        }
+      }
+      
+      // Query: getOrderStats
+      if (query.includes('getOrderStats')) {
+        const stats = await resolvers.Query.getOrderStats();
+        return res.json({ data: { getOrderStats: stats } });
+      }
+      
+      // Query: hello
+      if (query.includes('hello')) {
+        const message = await resolvers.Query.hello();
+        return res.json({ data: { hello: message } });
       }
     }
     
-    // Query: getProduct (por ID)
-    if (query.includes('getProduct(') || query.includes('getProduct (')) {
-      const idMatch = query.match(/id:\s*"([^"]+)"/);
-      if (idMatch) {
-        const product = await resolvers.Query.getProduct(null, { id: idMatch[1] });
-        return res.json({ data: { getProduct: product } });
+    // ==================== MUTATIONS ====================
+    
+    if (isMutation) {
+      // Mutation: addToCart
+      if (query.includes('addToCart')) {
+        const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
+        const productIdMatch = query.match(/productId:\s*"([^"]+)"/);
+        const quantityMatch = query.match(/quantity:\s*(\d+)/);
+        
+        if (userIdMatch && productIdMatch) {
+          const cart = await resolvers.Mutation.addToCart(null, {
+            userId: userIdMatch[1],
+            productId: productIdMatch[1],
+            quantity: quantityMatch ? parseInt(quantityMatch[1]) : 1
+          });
+          return res.json({ data: { addToCart: cart } });
+        }
+      }
+      
+      // Mutation: removeFromCart
+      if (query.includes('removeFromCart')) {
+        const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
+        const itemIdMatch = query.match(/itemId:\s*"([^"]+)"/);
+        
+        if (userIdMatch && itemIdMatch) {
+          const cart = await resolvers.Mutation.removeFromCart(null, {
+            userId: userIdMatch[1],
+            itemId: itemIdMatch[1]
+          });
+          return res.json({ data: { removeFromCart: cart } });
+        }
+      }
+      
+      // Mutation: clearCart
+      if (query.includes('clearCart')) {
+        const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
+        
+        if (userIdMatch) {
+          const cart = await resolvers.Mutation.clearCart(null, {
+            userId: userIdMatch[1]
+          });
+          return res.json({ data: { clearCart: cart } });
+        }
+      }
+      
+      // Mutation: createOrder
+      if (query.includes('createOrder')) {
+        const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
+        const totalMatch = query.match(/total:\s*(\d+\.?\d*)/);
+        
+        if (userIdMatch && totalMatch) {
+          const order = await resolvers.Mutation.createOrder(null, {
+            userId: userIdMatch[1],
+            total: parseFloat(totalMatch[1])
+          });
+          return res.json({ data: { createOrder: order } });
+        }
+      }
+      
+      // Mutation: updateOrderStatus
+      if (query.includes('updateOrderStatus')) {
+        const orderIdMatch = query.match(/orderId:\s*"([^"]+)"/);
+        const statusMatch = query.match(/status:\s*"(\w+)"/);
+        
+        if (orderIdMatch && statusMatch) {
+          const order = await resolvers.Mutation.updateOrderStatus(null, {
+            orderId: orderIdMatch[1],
+            status: statusMatch[1]
+          });
+          return res.json({ data: { updateOrderStatus: order } });
+        }
       }
     }
     
-    // Query: getOrders
-    if (query.includes('getOrders')) {
-      const statusMatch = query.match(/status:\s*"(\w+)"/);
-      const status = statusMatch ? statusMatch[1] : null;
-      const orders = await resolvers.Query.getOrders(null, { status });
-      return res.json({ data: { getOrders: orders } });
-    }
-    
-    // Query: getOrder (por ID)
-    if (query.includes('getOrder(') || query.includes('getOrder (')) {
-      const idMatch = query.match(/id:\s*"([^"]+)"/);
-      if (idMatch) {
-        const order = await resolvers.Query.getOrder(null, { id: idMatch[1] });
-        return res.json({ data: { getOrder: order } });
-      }
-    }
-    
-    // Query: getMyOrders
-    if (query.includes('getMyOrders')) {
-      const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
-      if (userIdMatch) {
-        const orders = await resolvers.Query.getMyOrders(null, { userId: userIdMatch[1] });
-        return res.json({ data: { getMyOrders: orders } });
-      }
-    }
-    
-    // Query: getCart
-    if (query.includes('getCart')) {
-      const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
-      if (userIdMatch) {
-        const cart = await resolvers.Query.getCart(null, { userId: userIdMatch[1] });
-        return res.json({ data: { getCart: cart } });
-      }
-    }
-    
-    // Query: getOrderStats
-    if (query.includes('getOrderStats')) {
-      const stats = await resolvers.Query.getOrderStats();
-      return res.json({ data: { getOrderStats: stats } });
-    }
-    
-    // Query: hello
-    if (query.includes('hello')) {
-      const message = await resolvers.Query.hello();
-      return res.json({ data: { hello: message } });
-    }
-    
-    // Si llegamos aquí, la query no está implementada
+    // Si llegamos aquí, la operación no está implementada
     res.json({
       data: null,
       errors: [{
-        message: 'Query no implementada en modo básico. Queries disponibles: getProducts, getProductsByLeague, getOrders, getCart, getOrderStats, hello'
+        message: 'Operación GraphQL no reconocida. Disponibles: Queries (getProducts, getProductsByLeague, getCart, getMyOrders, getOrders, getOrderStats) | Mutations (addToCart, removeFromCart, clearCart, createOrder, updateOrderStatus)'
       }]
     });
     
@@ -129,384 +461,95 @@ app.post('/graphql', async (req, res) => {
     res.json({
       data: null,
       errors: [{
-        message: error.message
+        message: error.message,
+        extensions: {
+          code: 'INTERNAL_SERVER_ERROR'
+        }
       }]
     });
   }
 });
 
-// ================== CONEXIÓN A MONGODB ==================
-console.log('🔗 Intentando conectar a MongoDB Atlas...');
+// ==================== RUTAS REST (Complementarias) ====================
+app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/chat', chatRoutes);
 
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  retryWrites: true,
-  w: 'majority'
-})
-.then(async () => {
-  console.log('✅ Conectado a MongoDB Atlas correctamente');
-  console.log('📊 Base de datos:', mongoose.connection.db.databaseName);
-  
-  await initializeDefaultData();
-  
-  console.log('🚀 GraphQL BÁSICO disponible en: http://localhost:3000/graphql');
-})
-.catch(err => {
-  console.error('❌ Error crítico conectando a MongoDB:', err);
-  process.exit(1);
-});
-
-mongoose.connection.on('error', err => {
-  console.error('❌ Error de MongoDB:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️  MongoDB desconectado');
-});
-
-// ================== RUTAS REST ==================
-
-app.use("/api/auth", authRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/cart", cartRoutes);
-app.use("/api/orders", orderRoutes);
-app.use("/api/admin", adminRoutes);
-
-// Ruta de salud
-app.get("/api/health", async (req, res) => {
+// Health check
+app.get('/api/health', async (req, res) => {
   try {
     const productCount = await Product.countDocuments();
     const userCount = await User.countDocuments();
     
-    res.json({ 
-      status: "OK", 
-      message: "🚀 Servidor funcionando correctamente",
-      timestamp: new Date().toISOString(),
+    res.json({
+      status: 'OK',
+      message: '🚀 Servidor funcionando correctamente',
       database: {
-        status: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+        status: 'connected',
         products: productCount,
         users: userCount
       },
       graphql: {
-        status: "✅ MODO BÁSICO ACTIVO",
-        endpoint: "http://localhost:3000/graphql",
-        queries: ["getProducts", "getProductsByLeague", "getOrders", "getCart", "getOrderStats", "hello"]
+        status: '✅ MODO COMPLETO ACTIVO (Queries + Mutations)',
+        endpoint: `http://localhost:${PORT}/graphql`
       },
-      environment: process.env.NODE_ENV || "development"
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      status: 'ERROR',
+      message: error.message
+    });
   }
 });
 
-// Ruta de debug
-app.get("/api/debug/database", async (req, res) => {
-  try {
-    const [products, users, collections] = await Promise.all([
-      Product.find().select('name price league stock').limit(5),
-      User.find().select('username email role').limit(5),
-      mongoose.connection.db.listCollections().toArray()
-    ]);
-    
-    res.json({
-      status: "DEBUG_INFO",
-      database: {
-        name: mongoose.connection.db.databaseName,
-        state: mongoose.connection.readyState,
-        collections: collections.map(c => c.name)
-      },
-      counts: {
-        products: await Product.countDocuments(),
-        users: await User.countDocuments()
-      },
-      sampleData: {
-        products: products,
-        users: users
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// ==================== SOCKET.IO PARA CHAT ====================
+io.on('connection', (socket) => {
+  console.log('👤 Usuario conectado al chat:', socket.id);
 
-// Ruta principal
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+  socket.on('joinChat', (data) => {
+    console.log(`✅ ${data.username} se unió al chat`);
+    socket.broadcast.emit('userJoined', data);
+  });
 
-// ================== SOCKET.IO ==================
+  socket.on('sendMessage', (data) => {
+    console.log(`💬 Mensaje de ${data.username}: ${data.message}`);
+    io.emit('newMessage', data);
+  });
 
-io.on("connection", (socket) => {
-    console.log("✅ Nueva conexión Socket.IO:", socket.id);
+  socket.on('typing', (data) => {
+    socket.broadcast.emit('typing', data);
+  });
 
-    socket.on("joinChat", async (user) => {
-        try {
-            console.log(`👋 ${user.username} se unió al chat`);
-            socket.join("chat-room");
-            
-            const systemMessage = new ChatMessage({
-                username: 'Sistema',
-                message: `${user.username} se unió al chat`,
-                room: "chat-room",
-                type: "system"
-            });
-            await systemMessage.save();
-            
-            try {
-                const chatHistory = await ChatMessage.getChatHistory("chat-room", 50);
-                socket.emit("chatHistory", chatHistory);
-            } catch (historyError) {
-                console.error("Error cargando historial:", historyError);
-                socket.emit("chatHistory", []);
-            }
-            
-            socket.broadcast.to("chat-room").emit("userJoined", {
-                username: user.username,
-                timestamp: new Date().toLocaleTimeString("es-ES", { 
-                    hour: "2-digit", 
-                    minute: "2-digit" 
-                })
-            });
-            
-        } catch (error) {
-            console.error("❌ Error en joinChat:", error);
-            socket.emit("chatError", { message: "Error al unirse al chat" });
-        }
-    });
-
-    socket.on("sendMessage", async (data) => {
-        try {
-            console.log(`💬 Mensaje de ${data.username}: ${data.message}`);
-            
-            let userId = data.userId;
-            if (!userId) {
-                try {
-                    const user = await User.findOne({ username: data.username });
-                    if (user) {
-                        userId = user._id;
-                    } else {
-                        userId = new mongoose.Types.ObjectId();
-                    }
-                } catch (userError) {
-                    userId = new mongoose.Types.ObjectId();
-                }
-            }
-            
-            const chatMessage = new ChatMessage({
-                user: userId,
-                username: data.username,
-                message: data.message,
-                room: "chat-room",
-                type: "message"
-            });
-            
-            await chatMessage.save();
-            
-            io.to("chat-room").emit("newMessage", {
-                username: data.username,
-                message: data.message,
-                timestamp: new Date().toLocaleTimeString("es-ES", { 
-                    hour: "2-digit", 
-                    minute: "2-digit" 
-                }),
-                _id: chatMessage._id
-            });
-            
-        } catch (error) {
-            console.error("❌ Error guardando mensaje:", error);
-            
-            io.to("chat-room").emit("newMessage", {
-                username: data.username,
-                message: data.message,
-                timestamp: new Date().toLocaleTimeString("es-ES", { 
-                    hour: "2-digit", 
-                    minute: "2-digit" 
-                }),
-                temporary: true
-            });
-        }
-    });
-
-    socket.on("typing", (data) => {
-        try {
-            socket.broadcast.to("chat-room").emit("typing", {
-                username: data.username,
-                isTyping: data.isTyping
-            });
-        } catch (error) {
-            console.error("Error en typing:", error);
-        }
-    });
-
-    socket.on("disconnect", async (reason) => {
-        console.log(`❌ Usuario desconectado: ${socket.id} - Razón: ${reason}`);
-    });
-
-    socket.on("error", (error) => {
-        console.error("❌ Error de socket:", error);
-        socket.emit("socketError", { 
-            message: "Error de conexión",
-            code: error.code 
-        });
-    });
-});
-
-// ================== MANEJADOR 404 ==================
-app.use("*", (req, res) => {
-  res.status(404).json({
-    error: "Ruta no encontrada",
-    path: req.originalUrl,
-    method: req.method
+  socket.on('disconnect', () => {
+    console.log('👋 Usuario desconectado:', socket.id);
   });
 });
 
-// Manejo de errores globales
-app.use((error, req, res, next) => {
-  console.error("🔥 Error global:", error);
-  res.status(500).json({
-    error: "Error interno del servidor",
-    message: process.env.NODE_ENV === "development" ? error.message : "Contacta al administrador"
-  });
-});
-
-// ================== INICIALIZACIÓN DE DATOS ==================
-
-async function initializeDefaultData() {
-  try {
-    console.log('🏀 Verificando datos iniciales...');
-    
-    const adminCount = await User.countDocuments({ role: 'admin' });
-    let adminUser;
-
-    if (adminCount === 0) {
-      console.log('👑 Creando usuario administrador...');
-      adminUser = await createDefaultAdmin();
-    } else {
-      adminUser = await User.findOne({ role: 'admin' });
-      console.log('✅ Usuario admin ya existe:', adminUser.email);
-    }
-    
-    const productCount = await Product.countDocuments();
-    console.log(`📦 Productos en BD: ${productCount}`);
-    
-    if (productCount === 0) {
-      console.log('🔄 Creando productos de baloncesto...');
-      await createDefaultProducts(adminUser);
-    }
-    
-    console.log('🎉 Inicialización completada correctamente');
-    
-  } catch (error) {
-    console.error('❌ Error en inicialización:', error);
-  }
-}
-
-async function createDefaultAdmin() {
-  try {
-    const bcrypt = require('bcryptjs');
-    
-    const existingAdmin = await User.findOne({ email: 'admin@baloncesto.com' });
-    if (existingAdmin) {
-      console.log('✅ Usuario admin ya existe');
-      return existingAdmin;
-    }
-    
-    const adminUser = new User({
-      username: 'admin',
-      email: 'admin@baloncesto.com',
-      password: await bcrypt.hash('admin123', 12),
-      role: 'admin'
-    });
-    
-    await adminUser.save();
-    console.log('✅ Usuario admin creado: admin@baloncesto.com / admin123');
-    return adminUser;
-    
-  } catch (error) {
-    console.error('❌ Error creando admin:', error);
-    throw error;
-  }
-}
-
-async function createDefaultProducts(adminUser) {
-  try {
-    const createdById = adminUser ? adminUser._id : new mongoose.Types.ObjectId();
-
-    const defaultProducts = [
-      {
-        name: "Balón Oficial NBA Spalding",
-        description: "Balón de baloncesto oficial de la NBA, tamaño 7, material de cuero sintético premium.",
-        price: 89.99,
-        category: "Balones",
-        image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400",
-        stock: 25,
-        league: "NBA",
-        createdBy: createdById
-      },
-      {
-        name: "Camiseta Lakers LeBron James",
-        description: "Camiseta oficial de Los Angeles Lakers, edición legendaria de LeBron James.",
-        price: 119.99,
-        category: "Camisetas",
-        image: "https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=400",
-        stock: 15,
-        league: "NBA",
-        createdBy: createdById
-      },
-      {
-        name: "Zapatillas Jordan XXXVII",
-        description: "Zapatillas de baloncesto Air Jordan XXXVII, tecnología Zoom Air, edición limitada.",
-        price: 199.99,
-        category: "Calzado",
-        image: "https://images.unsplash.com/photo-1605348532760-6753d2c43329?w=400",
-        stock: 8,
-        league: "NBA",
-        createdBy: createdById
-      },
-      {
-        name: "Balón Oficial ACB Molten",
-        description: "Balón oficial de la Liga ACB, tamaño 7, homologado FIBA.",
-        price: 69.99,
-        category: "Balones",
-        image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400",
-        stock: 30,
-        league: "ACB",
-        createdBy: createdById
-      },
-      {
-        name: "Camiseta Real Madrid 2024",
-        description: "Camiseta oficial del Real Madrid de baloncesto, temporada 2023-2024.",
-        price: 89.99,
-        category: "Camisetas",
-        image: "https://images.unsplash.com/photo-1614624532983-1fe212c7d6e5?w=400",
-        stock: 20,
-        league: "ACB",
-        createdBy: createdById
-      }
-    ];
-
-    await Product.insertMany(defaultProducts);
-    console.log(`✅ ${defaultProducts.length} productos creados exitosamente`);
-    
-  } catch (error) {
-    console.error('❌ Error creando productos:', error);
-    throw error;
-  }
-}
-
-// Iniciar servidor
+// ==================== INICIAR SERVIDOR ====================
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-  console.log(`\n🎉 ==========================================`);
-  console.log(`🚀 Servidor ejecutándose en puerto ${PORT}`);
-  console.log(`🏀 Tienda de Baloncesto NBA/ACB`);
-  console.log(`🔗 Health: http://localhost:${PORT}/api/health`);
-  console.log(`🔗 Frontend: http://localhost:${PORT}`);
-  console.log(`🔗 GraphQL: http://localhost:${PORT}/graphql (MODO BÁSICO)`);
-  console.log(`🎉 ==========================================\n`);
+  console.log(`
+╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║   🏀 SERVIDOR DE BALONCESTO NBA/ACB INICIADO                  ║
+║                                                                ║
+║   🌐 URL: http://localhost:${PORT}                              ║
+║   📊 GraphQL: http://localhost:${PORT}/graphql                  ║
+║   ✅ Queries + Mutations disponibles                          ║
+║   💬 Socket.IO: Activo                                        ║
+║   🗄️  MongoDB: Conectado                                      ║
+║                                                                ║
+║   Credenciales Admin:                                         ║
+║   📧 Email: admin@baloncesto.com                              ║
+║   🔑 Pass: admin123                                           ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝
+  `);
 });
 
-module.exports = app;
+module.exports = { app, server, io };

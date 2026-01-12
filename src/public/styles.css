@@ -1096,3 +1096,141 @@ footer {
 .p-1 { padding: 0.5rem; }
 .p-2 { padding: 1rem; }
 .p-3 { padding: 1.5rem; }
+
+/* ==================== GESTIÓN DE USUARIOS ==================== */
+
+.users-list {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.user-card {
+    background: white;
+    border: 3px solid var(--nba-blue);
+    border-radius: 15px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.user-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+}
+
+.user-card.admin-role {
+    border-color: var(--warning);
+    background: linear-gradient(to right, #FEF3C7 0%, white 20%);
+}
+
+.user-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #E5E7EB;
+}
+
+.user-info h3 {
+    margin: 0;
+    color: var(--nba-blue);
+    font-size: 1.3rem;
+}
+
+.user-email {
+    margin: 0.5rem 0 0 0;
+    color: var(--gray-dark);
+    font-size: 0.9rem;
+}
+
+.role-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.role-badge.admin-role {
+    background: #FEF3C7;
+    color: #92400E;
+}
+
+.role-badge.user-role {
+    background: #DBEAFE;
+    color: #1E40AF;
+}
+
+.user-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.user-meta p {
+    margin: 0;
+    color: var(--gray-dark);
+}
+
+.user-actions {
+    display: flex;
+    gap: 0.8rem;
+    margin-top: 1rem;
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, var(--warning) 0%, #D97706 100%);
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex: 1;
+}
+
+.btn-warning:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, var(--error) 0%, #DC2626 100%);
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex: 1;
+}
+
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+}
+
+.current-user-note {
+    text-align: center;
+    color: var(--warning);
+    font-weight: bold;
+    margin: 1rem 0 0 0;
+    padding: 0.8rem;
+    background: #FEF3C7;
+    border-radius: 8px;
+}
+
+.empty-users {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: var(--gray-light);
+    border-radius: 15px;
+}
+
+.empty-users h3 {
+    color: var(--nba-blue);
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}

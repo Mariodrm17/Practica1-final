@@ -10,6 +10,13 @@ class BasketballStore {
         this.init();
     }
 
+    // Método helper para obtener el userId correctamente
+    getUserId() {
+        if (!this.user) return null;
+        // Intentar id primero, luego _id, luego userId
+        return this.user.id || this.user._id || this.getUserId();
+    }
+
     init() {
         this.checkAuth();
         this.setupEventListeners();
@@ -256,14 +263,18 @@ class BasketballStore {
             document.getElementById('admin-panel').style.display = 'block';
             const createProductBtn = document.getElementById('create-product-btn');
             const adminOrdersBtn = document.getElementById('admin-orders-btn');
+            const adminUsersBtn = document.getElementById('admin-users-btn');
             if (createProductBtn) createProductBtn.style.display = 'inline-block';
             if (adminOrdersBtn) adminOrdersBtn.style.display = 'inline-block';
+            if (adminUsersBtn) adminUsersBtn.style.display = 'inline-block';
         } else {
             document.getElementById('admin-panel').style.display = 'none';
             const createProductBtn = document.getElementById('create-product-btn');
             const adminOrdersBtn = document.getElementById('admin-orders-btn');
+            const adminUsersBtn = document.getElementById('admin-users-btn');
             if (createProductBtn) createProductBtn.style.display = 'none';
             if (adminOrdersBtn) adminOrdersBtn.style.display = 'none';
+            if (adminUsersBtn) adminUsersBtn.style.display = 'none';
         }
 
         this.loadProducts();
@@ -588,7 +599,7 @@ class BasketballStore {
 
             const query = `
                 query {
-                    getCart(userId: "${this.user.userId}") {
+                    getCart(userId: "${this.getUserId()}") {
                         id
                         total
                         items {
@@ -633,10 +644,11 @@ class BasketballStore {
                 return;
             }
 
+            // Usar GraphQL MUTATION para añadir al carrito
             const query = `
                 mutation {
                     addToCart(
-                        userId: "${this.user.userId}"
+                        userId: "${this.getUserId()}"
                         productId: "${productId}"
                         quantity: ${quantity}
                     ) {
@@ -645,6 +657,9 @@ class BasketballStore {
                         items {
                             id
                             quantity
+                            product {
+                                name
+                            }
                         }
                     }
                 }
@@ -653,7 +668,10 @@ class BasketballStore {
             const data = await this.graphqlQuery(query);
             
             this.showNotification('✅ Producto añadido al carrito', 'success');
-            this.updateCartBadge(data.addToCart.items.length);
+            // Actualizar badge del carrito
+            if (data.addToCart && data.addToCart.items) {
+                this.updateCartBadge(data.addToCart.items.length);
+            }
 
         } catch (error) {
             console.error('❌ Error añadiendo al carrito:', error);
@@ -690,16 +708,20 @@ class BasketballStore {
         try {
             if (!confirm('¿Estás seguro de vaciar el carrito?')) return;
 
+            // Usar GraphQL MUTATION para vaciar carrito
             const query = `
                 mutation {
-                    clearCart(userId: "${this.user.userId}") {
+                    clearCart(userId: "${this.getUserId()}") {
                         id
                         total
+                        items {
+                            id
+                        }
                     }
                 }
             `;
 
-            await this.graphqlQuery(query);
+            const data = await this.graphqlQuery(query);
             
             this.showNotification('Carrito vaciado', 'success');
             this.loadCart();
@@ -714,22 +736,50 @@ class BasketballStore {
         try {
             if (!confirm('¿Confirmar pedido?')) return;
 
-            const response = await fetch(`${this.API_BASE}/api/orders/checkout`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.token}`
+            // Primero obtener el carrito para saber el total
+            const cartQuery = `
+                query {
+                    getCart(userId: "${this.getUserId()}") {
+                        total
+                        items {
+                            product {
+                                id
+                                name
+                            }
+                            quantity
+                        }
+                    }
                 }
-            });
+            `;
 
-            const data = await response.json();
+            const cartData = await this.graphqlQuery(cartQuery);
+            
+            if (!cartData.getCart || cartData.getCart.items.length === 0) {
+                this.showNotification('El carrito está vacío', 'error');
+                return;
+            }
 
-            if (response.ok && data.success) {
+            // Crear pedido con GraphQL MUTATION
+            const orderMutation = `
+                mutation {
+                    createOrder(
+                        userId: "${this.getUserId()}"
+                        total: ${cartData.getCart.total}
+                    ) {
+                        id
+                        total
+                        status
+                        createdAt
+                    }
+                }
+            `;
+
+            const orderData = await this.graphqlQuery(orderMutation);
+
+            if (orderData.createOrder) {
                 this.showNotification('🎉 ¡Pedido realizado con éxito!', 'success');
                 this.loadCart();
                 showMyOrders();
-            } else {
-                throw new Error(data.message);
             }
 
         } catch (error) {
@@ -832,7 +882,7 @@ class BasketballStore {
 
             const query = `
                 query {
-                    getMyOrders(userId: "${this.user.userId}") {
+                    getMyOrders(userId: "${this.getUserId()}") {
                         id
                         total
                         status
@@ -876,6 +926,12 @@ class BasketballStore {
         }
 
         ordersList.innerHTML = orders.map(order => {
+            // Validar que order tenga los campos necesarios
+            if (!order || !order.id) {
+                console.warn('Pedido con datos incompletos:', order);
+                return '';
+            }
+
             const date = new Date(order.createdAt).toLocaleDateString('es-ES');
             const statusClass = order.status === 'completed' ? 'completed' : 'pending';
             const statusText = order.status === 'completed' ? '✅ Completado' : '⏳ Pendiente';
@@ -888,22 +944,22 @@ class BasketballStore {
                     </div>
                     <div class="order-info">
                         <p>📅 Fecha: ${date}</p>
-                        <p>💰 Total: €${order.total.toFixed(2)}</p>
-                        <p>📦 Productos: ${order.products.length}</p>
+                        <p>💰 Total: €${order.total ? order.total.toFixed(2) : '0.00'}</p>
+                        <p>📦 Productos: ${order.products ? order.products.length : 0}</p>
                     </div>
                     <div class="order-products">
-                        ${order.products.map(p => `
+                        ${order.products && order.products.length > 0 ? order.products.map(p => `
                             <div class="order-product-item">
-                                <img src="${p.product.image}" alt="${p.product.name}">
-                                <span>${p.product.name} x${p.quantity}</span>
-                                <span>€${(p.price * p.quantity).toFixed(2)}</span>
+                                <img src="${p.product?.image || 'https://via.placeholder.com/60'}" alt="${p.product?.name || 'Producto'}">
+                                <span>${p.product?.name || 'Producto'} x${p.quantity || 1}</span>
+                                <span>€${(p.price && p.quantity) ? (p.price * p.quantity).toFixed(2) : '0.00'}</span>
                             </div>
-                        `).join('')}
+                        `).join('') : '<p>Sin productos</p>'}
                     </div>
                     <button class="btn-secondary" onclick="viewOrderDetails('${order.id}')">Ver Detalles</button>
                 </div>
             `;
-        }).join('');
+        }).filter(Boolean).join('');
     }
 
     async loadAllOrders() {
@@ -957,6 +1013,12 @@ class BasketballStore {
         }
 
         ordersList.innerHTML = orders.map(order => {
+            // Validar que order tenga los campos necesarios
+            if (!order || !order.id) {
+                console.warn('Pedido con datos incompletos:', order);
+                return '';
+            }
+
             const date = new Date(order.createdAt).toLocaleDateString('es-ES');
             const statusClass = order.status === 'completed' ? 'completed' : 'pending';
             const statusText = order.status === 'completed' ? '✅ Completado' : '⏳ Pendiente';
@@ -966,14 +1028,14 @@ class BasketballStore {
                     <div class="order-header">
                         <div>
                             <h3>Pedido #${order.id.slice(-8)}</h3>
-                            <p class="customer-info">👤 ${order.user.username} (${order.user.email})</p>
+                            <p class="customer-info">👤 ${order.user?.username || 'Usuario'} (${order.user?.email || 'email'})</p>
                         </div>
                         <span class="status-badge ${statusClass}">${statusText}</span>
                     </div>
                     <div class="order-info">
                         <p>📅 ${date}</p>
-                        <p>💰 €${order.total.toFixed(2)}</p>
-                        <p>📦 ${order.products.length} productos</p>
+                        <p>💰 €${order.total ? order.total.toFixed(2) : '0.00'}</p>
+                        <p>📦 ${order.products ? order.products.length : 0} productos</p>
                     </div>
                     <div class="admin-actions">
                         ${order.status === 'pending' ? 
@@ -984,11 +1046,12 @@ class BasketballStore {
                     </div>
                 </div>
             `;
-        }).join('');
+        }).filter(Boolean).join('');
     }
 
     async updateOrderStatus(orderId, newStatus) {
         try {
+            // Usar GraphQL MUTATION para actualizar estado del pedido
             const query = `
                 mutation {
                     updateOrderStatus(
@@ -1001,7 +1064,7 @@ class BasketballStore {
                 }
             `;
 
-            await this.graphqlQuery(query);
+            const data = await this.graphqlQuery(query);
             
             this.showNotification(`Pedido actualizado a ${newStatus}`, 'success');
             this.loadAllOrders();
@@ -1009,6 +1072,150 @@ class BasketballStore {
         } catch (error) {
             console.error('❌ Error actualizando pedido:', error);
             this.showNotification('Error actualizando pedido', 'error');
+        }
+    }
+
+    // ==================== GESTIÓN DE USUARIOS (ADMIN) ====================
+
+    async loadUsers() {
+        try {
+            if (!this.user || this.user.role !== 'admin') return;
+
+            console.log('👥 Cargando usuarios (Admin)...');
+
+            // Usar REST API para obtener usuarios
+            const response = await fetch(`${this.API_BASE}/api/admin/users`, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                this.allUsers = data.users || [];
+                this.renderUsers(this.allUsers);
+                this.updateUserStats(this.allUsers);
+            } else {
+                throw new Error(data.message || 'Error cargando usuarios');
+            }
+
+        } catch (error) {
+            console.error('❌ Error cargando usuarios:', error);
+            this.showNotification('Error cargando usuarios', 'error');
+        }
+    }
+
+    updateUserStats(users) {
+        const totalUsers = users.length;
+        const adminCount = users.filter(u => u.role === 'admin').length;
+        const userCount = users.filter(u => u.role === 'user').length;
+
+        document.getElementById('total-users').textContent = totalUsers;
+        document.getElementById('admin-count').textContent = adminCount;
+        document.getElementById('user-count').textContent = userCount;
+    }
+
+    renderUsers(users) {
+        const usersList = document.getElementById('users-list');
+
+        if (!users || users.length === 0) {
+            usersList.innerHTML = `
+                <div class="empty-users">
+                    <h3>👥 No hay usuarios en el sistema</h3>
+                </div>
+            `;
+            return;
+        }
+
+        usersList.innerHTML = users.map(user => {
+            if (!user || !user._id) {
+                console.warn('Usuario con datos incompletos:', user);
+                return '';
+            }
+
+            const isCurrentUser = user._id === this.getUserId();
+            const roleClass = user.role === 'admin' ? 'admin-role' : 'user-role';
+
+            return `
+                <div class="user-card ${roleClass}">
+                    <div class="user-header">
+                        <div class="user-info">
+                            <h3>${user.username} ${isCurrentUser ? '(Tú)' : ''}</h3>
+                            <p class="user-email">📧 ${user.email}</p>
+                        </div>
+                        <span class="role-badge ${roleClass}">${user.role === 'admin' ? '👑 Admin' : '👤 User'}</span>
+                    </div>
+                    <div class="user-meta">
+                        <p>📅 Registro: ${new Date(user.createdAt).toLocaleDateString('es-ES')}</p>
+                        <p>🛒 Pedidos: ${user.orders ? user.orders.length : 0}</p>
+                    </div>
+                    ${!isCurrentUser ? `
+                        <div class="user-actions">
+                            <button class="btn-warning" onclick="app.changeUserRole('${user._id}', '${user.role === 'admin' ? 'user' : 'admin'}')">
+                                ${user.role === 'admin' ? '👤 Hacer User' : '👑 Hacer Admin'}
+                            </button>
+                            <button class="btn-danger" onclick="app.deleteUser('${user._id}', '${user.username}')">
+                                🗑️ Eliminar
+                            </button>
+                        </div>
+                    ` : '<p class="current-user-note">⚠️ No puedes modificar tu propio usuario</p>'}
+                </div>
+            `;
+        }).filter(Boolean).join('');
+    }
+
+    async changeUserRole(userId, newRole) {
+        try {
+            if (!confirm(`¿Cambiar rol a ${newRole}?`)) return;
+
+            const response = await fetch(`${this.API_BASE}/api/admin/users/${userId}/role`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify({ role: newRole })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                this.showNotification(`✅ Rol cambiado a ${newRole}`, 'success');
+                this.loadUsers();
+            } else {
+                throw new Error(data.message || 'Error cambiando rol');
+            }
+
+        } catch (error) {
+            console.error('❌ Error cambiando rol:', error);
+            this.showNotification('Error cambiando rol de usuario', 'error');
+        }
+    }
+
+    async deleteUser(userId, username) {
+        try {
+            if (!confirm(`¿Estás seguro de eliminar al usuario "${username}"? Esta acción no se puede deshacer.`)) return;
+
+            const response = await fetch(`${this.API_BASE}/api/admin/users/${userId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                this.showNotification(`🗑️ Usuario "${username}" eliminado`, 'success');
+                this.loadUsers();
+            } else {
+                throw new Error(data.message || 'Error eliminando usuario');
+            }
+
+        } catch (error) {
+            console.error('❌ Error eliminando usuario:', error);
+            this.showNotification('Error eliminando usuario', 'error');
         }
     }
 
@@ -1066,6 +1273,12 @@ function showAllOrders() {
     app.loadAllOrders();
 }
 
+function showUserManagement() {
+    hideAllSections();
+    document.getElementById('user-management-section').style.display = 'block';
+    app.loadUsers();
+}
+
 function showChat() {
     hideAllSections();
     document.getElementById('chat-section').style.display = 'block';
@@ -1090,6 +1303,7 @@ function hideAllSections() {
     document.getElementById('cart-section').style.display = 'none';
     document.getElementById('my-orders-section').style.display = 'none';
     document.getElementById('all-orders-section').style.display = 'none';
+    document.getElementById('user-management-section').style.display = 'none';
     document.getElementById('chat-section').style.display = 'none';
     document.getElementById('create-product-section').style.display = 'none';
 }

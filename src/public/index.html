@@ -32,6 +32,8 @@
                         style="display: none;">➕ Nuevo Producto</button>
                     <button class="nav-btn admin-btn" onclick="showAllOrders()" id="admin-orders-btn"
                         style="display: none;">📊 Gestión Pedidos</button>
+                    <button class="nav-btn admin-btn" onclick="showUserManagement()" id="admin-users-btn"
+                        style="display: none;">👥 Gestión Usuarios</button>
                     <button class="nav-btn logout-btn" onclick="logout()">🚪 Salir</button>
                 </div>
             </nav>
@@ -153,6 +155,29 @@
                 </div>
                 <div id="all-orders-list" class="orders-list">
                     <!-- Todos los pedidos se cargarán aquí -->
+                </div>
+            </div>
+
+            <!-- ==================== SECCIÓN ADMIN: GESTIÓN DE USUARIOS ==================== -->
+            <div id="user-management-section" class="section" style="display: none;">
+                <h2>👥 Gestión de Usuarios (Admin)</h2>
+                <div class="stats-summary">
+                    <div class="stat-card">
+                        <h3 id="total-users">0</h3>
+                        <p>Total Usuarios</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="admin-count">0</h3>
+                        <p>Administradores</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="user-count">0</h3>
+                        <p>Usuarios</p>
+                    </div>
+                </div>
+                
+                <div id="users-list" class="users-list">
+                    <!-- Lista de usuarios se cargará aquí -->
                 </div>
             </div>
 
