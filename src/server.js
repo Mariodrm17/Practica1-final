@@ -446,13 +446,25 @@ app.post('/graphql', async (req, res) => {
           return res.json({ data: { updateOrderStatus: order } });
         }
       }
+      
+      // Mutation: createOrderFromCart
+      if (query.includes('createOrderFromCart')) {
+        const userIdMatch = query.match(/userId:\s*"([^"]+)"/);
+        
+        if (userIdMatch) {
+          const order = await resolvers.Mutation.createOrderFromCart(null, {
+            userId: userIdMatch[1]
+          });
+          return res.json({ data: { createOrderFromCart: order } });
+        }
+      }
     }
     
     // Si llegamos aquí, la operación no está implementada
     res.json({
       data: null,
       errors: [{
-        message: 'Operación GraphQL no reconocida. Disponibles: Queries (getProducts, getProductsByLeague, getCart, getMyOrders, getOrders, getOrderStats) | Mutations (addToCart, removeFromCart, clearCart, createOrder, updateOrderStatus)'
+        message: 'Operación GraphQL no reconocida. Disponibles: Queries (getProducts, getProductsByLeague, getCart, getMyOrders, getOrders, getOrderStats) | Mutations (addToCart, removeFromCart, clearCart, createOrder, updateOrderStatus, createOrderFromCart)'
       }]
     });
     

@@ -13,8 +13,8 @@ class BasketballStore {
     // Método helper para obtener el userId correctamente
     getUserId() {
         if (!this.user) return null;
-        // Intentar id primero, luego _id, luego userId
-        return this.user.id || this.user._id || this.getUserId();
+        // Intentar _id primero (MongoDB), luego id, luego userId
+        return this.user._id || this.user.id || this.user.userId || null;
     }
 
     init() {
@@ -762,9 +762,8 @@ class BasketballStore {
             // Crear pedido con GraphQL MUTATION
             const orderMutation = `
                 mutation {
-                    createOrder(
+                    createOrderFromCart(
                         userId: "${this.getUserId()}"
-                        total: ${cartData.getCart.total}
                     ) {
                         id
                         total
@@ -883,7 +882,7 @@ class BasketballStore {
             const query = `
                 query {
                     getMyOrders(userId: "${this.getUserId()}") {
-                        id
+                        _id
                         total
                         status
                         createdAt
@@ -927,7 +926,7 @@ class BasketballStore {
 
         ordersList.innerHTML = orders.map(order => {
             // Validar que order tenga los campos necesarios
-            if (!order || !order.id) {
+            if (!order || !order._id) {
                 console.warn('Pedido con datos incompletos:', order);
                 return '';
             }
@@ -939,7 +938,7 @@ class BasketballStore {
             return `
                 <div class="order-card ${statusClass}">
                     <div class="order-header">
-                        <h3>Pedido #${order.id.slice(-8)}</h3>
+                        <h3>Pedido #${order._id.slice(-8)}</h3>
                         <span class="status-badge ${statusClass}">${statusText}</span>
                     </div>
                     <div class="order-info">
@@ -956,7 +955,7 @@ class BasketballStore {
                             </div>
                         `).join('') : '<p>Sin productos</p>'}
                     </div>
-                    <button class="btn-secondary" onclick="viewOrderDetails('${order.id}')">Ver Detalles</button>
+                    <button class="btn-secondary" onclick="viewOrderDetails('${order._id}')">Ver Detalles</button>
                 </div>
             `;
         }).filter(Boolean).join('');
@@ -971,7 +970,7 @@ class BasketballStore {
             const query = `
                 query {
                     getOrders {
-                        id
+                        _id
                         total
                         status
                         createdAt
@@ -1014,7 +1013,7 @@ class BasketballStore {
 
         ordersList.innerHTML = orders.map(order => {
             // Validar que order tenga los campos necesarios
-            if (!order || !order.id) {
+            if (!order || !order._id) {
                 console.warn('Pedido con datos incompletos:', order);
                 return '';
             }
@@ -1027,7 +1026,7 @@ class BasketballStore {
                 <div class="order-card admin ${statusClass}">
                     <div class="order-header">
                         <div>
-                            <h3>Pedido #${order.id.slice(-8)}</h3>
+                            <h3>Pedido #${order._id.slice(-8)}</h3>
                             <p class="customer-info">👤 ${order.user?.username || 'Usuario'} (${order.user?.email || 'email'})</p>
                         </div>
                         <span class="status-badge ${statusClass}">${statusText}</span>
@@ -1039,10 +1038,10 @@ class BasketballStore {
                     </div>
                     <div class="admin-actions">
                         ${order.status === 'pending' ? 
-                            `<button class="btn-success" onclick="app.updateOrderStatus('${order.id}', 'completed')">✅ Marcar Completado</button>` :
-                            `<button class="btn-secondary" onclick="app.updateOrderStatus('${order.id}', 'pending')">⏳ Marcar Pendiente</button>`
+                            `<button class="btn-success" onclick="app.updateOrderStatus('${order._id}', 'completed')">✅ Marcar Completado</button>` :
+                            `<button class="btn-secondary" onclick="app.updateOrderStatus('${order._id}', 'pending')">⏳ Marcar Pendiente</button>`
                         }
-                        <button class="btn-secondary" onclick="viewOrderDetails('${order.id}')">Ver Detalles</button>
+                        <button class="btn-secondary" onclick="viewOrderDetails('${order._id}')">Ver Detalles</button>
                     </div>
                 </div>
             `;

@@ -154,11 +154,28 @@ router.post('/login', async (req, res) => {
 });
 
 // Verificar token
-router.get('/verify', authenticateJWT, (req, res) => {
-    res.json({
-        success: true,
-        user: req.user
-    });
+router.get('/verify', authenticateJWT, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId).select('-password');
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado'
+            });
+        }
+        
+        res.json({
+            success: true,
+            user: user
+        });
+    } catch (error) {
+        console.error('Error verificando token:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error verificando token'
+        });
+    }
 });
 
 // Obtener perfil de usuario

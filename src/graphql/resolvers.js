@@ -137,29 +137,40 @@ const resolvers = {
   },
   
   Mutation: {
-    // ==================== CREAR PEDIDO ====================
-    createOrder: async (_, { userId, products, total }) => {
+    // ==================== CREAR PEDIDO DESDE CARRITO ====================
+    createOrderFromCart: async (_, { userId }) => {
       try {
+        // Obtener carrito del usuario
+        const cart = await Cart.findOne({ user: userId })
+          .populate('items.product');
+        
+        if (!cart || !cart.items || cart.items.length === 0) {
+          throw new Error('El carrito está vacío');
+        }
+        
         // Verificar stock de todos los productos
-        for (const item of products) {
-          const product = await Product.findById(item.productId);
+        let total = 0;
+        for (const item of cart.items) {
+          const product = item.product;
           
           if (!product || !product.isActive) {
-            throw new Error(`Producto ${item.productId} no disponible`);
+            throw new Error(`Producto ${product?.name || 'desconocido'} no disponible`);
           }
           
           if (product.stock < item.quantity) {
             throw new Error(`Stock insuficiente para ${product.name}`);
           }
+          
+          total += product.price * item.quantity;
         }
         
         // Crear pedido
         const newOrder = new Order({
           user: userId,
-          products: products.map(p => ({
-            product: p.productId,
-            quantity: p.quantity,
-            price: p.price
+          products: cart.items.map(item => ({
+            product: item.product._id,
+            quantity: item.quantity,
+            price: item.product.price
           })),
           total: total,
           status: 'pending'
@@ -168,9 +179,9 @@ const resolvers = {
         await newOrder.save();
         
         // Reducir stock
-        for (const item of products) {
+        for (const item of cart.items) {
           await Product.findByIdAndUpdate(
-            item.productId,
+            item.product._id,
             {
               $inc: { 
                 stock: -item.quantity,

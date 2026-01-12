@@ -84,23 +84,11 @@ const typeDefs = `#graphql
     getOrderStats: OrderStats
   }
 
-  # ==================== INPUTS ====================
-  
-  input ProductInput {
-    productId: ID!
-    quantity: Int!
-    price: Float!
-  }
-
   # ==================== MUTATIONS ====================
   
   type Mutation {
     # Pedidos
-    createOrder(
-      userId: ID!
-      products: [ProductInput]!
-      total: Float!
-    ): Order
+    createOrderFromCart(userId: ID!): Order
     
     updateOrderStatus(
       orderId: ID!
