@@ -28,6 +28,7 @@ async function testQuery() {
   let needsApollo = false;
   
   switch(queryNumber) {
+    
     // ============================================
     // QUERIES QUE FUNCIONAN SIN APOLLO
     // ============================================
